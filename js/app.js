@@ -37,9 +37,7 @@ const App = (() => {
     renderNav();
     showView('matches');
 
-    // Start live polling every 60 seconds
-    livePollingInterval = setInterval(() => Scoring.pollLiveMatches(), 90000);
-    Scoring.pollLiveMatches(); // immediate first poll
+    // Polling disabled - scores entered manually via admin panel
   }
 
   async function seedMatchesIfNeeded() {
