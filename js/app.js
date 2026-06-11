@@ -358,8 +358,24 @@ const App = (() => {
   // ── Leaderboard View ───────────────────────────────────────
 
   async function renderLeaderboard() {
-    const usersSnap = await db.collection('users').orderBy('totalPoints', 'desc').get();
     const main = document.getElementById('main');
+    main.innerHTML = '<div class="loading-spinner"></div>';
+
+    const usersSnap = await db.collection('users').orderBy('totalPoints', 'desc').get();
+    const predsSnap = await db.collection('predictions').where('scored', '==', true).get();
+
+    // Build per-user breakdown
+    const breakdown = {};
+    predsSnap.forEach(doc => {
+      const p = doc.data();
+      if (!breakdown[p.userId]) {
+        breakdown[p.userId] = { correctScores: 0, correctResults: 0, correctScorers: 0, played: 0 };
+      }
+      breakdown[p.userId].played++;
+      if (p.breakdown && p.breakdown.score)  breakdown[p.userId].correctScores++;
+      if (p.breakdown && p.breakdown.result) breakdown[p.userId].correctResults++;
+      if (p.breakdown && p.breakdown.scorer) breakdown[p.userId].correctScorers++;
+    });
 
     let html = '<div class="leaderboard-view">';
     html += '<h2 class="view-heading">Leaderboard</h2>';
@@ -372,7 +388,11 @@ const App = (() => {
         <div class="lb-row lb-row--header">
           <span class="lb-rank">#</span>
           <span class="lb-name">Player</span>
-          <span class="lb-pts">Points</span>
+          <span class="lb-stat lb-stat--header" title="Predictions played">P</span>
+          <span class="lb-stat lb-stat--header lb-stat--score" title="Correct scores (3pts)">CS</span>
+          <span class="lb-stat lb-stat--header lb-stat--result" title="Correct results (1pt)">CR</span>
+          <span class="lb-stat lb-stat--header lb-stat--scorer" title="Correct first goalscorer (2pts)">FG</span>
+          <span class="lb-pts">Pts</span>
         </div>
       `;
 
@@ -381,11 +401,16 @@ const App = (() => {
         const user = doc.data();
         const isMe = doc.id === currentUser.uid;
         const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+        const b = breakdown[doc.id] || { correctScores: 0, correctResults: 0, correctScorers: 0, played: 0 };
 
         html += `
           <div class="lb-row ${isMe ? 'lb-row--me' : ''}">
             <span class="lb-rank">${medal || rank}</span>
-            <span class="lb-name">${escapeHtml(user.displayName || 'Anonymous')}</span>
+            <span class="lb-name">${escapeHtml(user.displayName || 'Anonymous')}${isMe ? '<span class="lb-you"> (you)</span>' : ''}</span>
+            <span class="lb-stat">${b.played}</span>
+            <span class="lb-stat lb-stat--score">${b.correctScores}</span>
+            <span class="lb-stat lb-stat--result">${b.correctResults}</span>
+            <span class="lb-stat lb-stat--scorer">${b.correctScorers}</span>
             <span class="lb-pts">${user.totalPoints || 0}</span>
           </div>
         `;
@@ -393,7 +418,14 @@ const App = (() => {
       });
 
       html += '</div>';
-      html += '<p class="lb-key">3pts correct score · 1pt correct result · 2pts first goalscorer</p>';
+      html += `
+        <div class="lb-key-grid">
+          <span class="lb-key-item"><strong>P</strong> Predictions made</span>
+          <span class="lb-key-item"><strong>CS</strong> Correct score <em>(3pts)</em></span>
+          <span class="lb-key-item"><strong>CR</strong> Correct result <em>(1pt)</em></span>
+          <span class="lb-key-item"><strong>FG</strong> First goalscorer <em>(2pts)</em></span>
+        </div>
+      `;
     }
 
     html += '</div>';
