@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WC26 Admin</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚙️</text></svg>" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy: #0A1628;
+      --navy-mid: #132238;
+      --pitch: #00A651;
+      --pitch-dark: #007A3D;
+      --gold: #F5C518;
+      --red: #E63946;
+      --white: #fff;
+      --off-white: #F4F6F9;
+      --border: #DDE3EC;
+      --text: #1A2332;
+      --muted: #6B7D94;
+      --font-display: 'Barlow Condensed', sans-serif;
+      --font-body: 'Barlow', sans-serif;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--off-white);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── Password screen ── */
+    #lock-screen {
+      min-height: 100vh;
+      background: var(--navy);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .lock-box {
+      background: var(--navy-mid);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .lock-icon { font-size: 48px; margin-bottom: 16px; }
+
+    .lock-title {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--white);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .lock-sub {
+      color: rgba(255,255,255,0.5);
+      font-size: 14px;
+      margin-bottom: 28px;
+    }
+
+    .lock-input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      border: 1.5px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      color: var(--white);
+      font-family: var(--font-body);
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 12px;
+      text-align: center;
+      letter-spacing: 0.2em;
+    }
+
+    .lock-input:focus { border-color: var(--pitch); }
+
+    .lock-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--pitch);
+      color: var(--white);
+      border: none;
+      border-radius: var(--radius);
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .lock-btn:hover { background: var(--pitch-dark); }
+
+    .lock-error {
+      color: #FF8080;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+
+    /* ── Admin app ── */
+    #admin-app {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+
+    .admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .admin-title {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--navy);
+    }
+
+    .admin-back {
+      font-size: 14px;
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .admin-back:hover { color: var(--pitch); }
+
+    /* ── Sections ── */
+    .admin-section {
+      background: var(--white);
+      border-radius: var(--radius);
+      border: 1.5px solid var(--border);
+      padding: 28px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 12px rgba(10,22,40,0.06);
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .section-desc {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    /* ── Form elements ── */
+    .field { margin-bottom: 16px; }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="email"],
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font-body);
+      font-size: 15px;
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus, select:focus { border-color: var(--pitch); }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .score-row input[type="number"] {
+      width: 80px;
+      text-align: center;
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .score-dash {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .score-team {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      min-width: 60px;
+    }
+
+    .admin-btn {
+      padding: 13px 24px;
+      border: none;
+      border-radius: 8px;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .admin-btn--primary { background: var(--navy); color: var(--white); }
+    .admin-btn--primary:hover { background: var(--pitch); }
+    .admin-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .admin-btn--danger { background: var(--red); color: var(--white); }
+    .admin-btn--danger:hover { opacity: 0.85; }
+
+    .msg {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .msg--success { background: #E8F8EE; color: var(--pitch-dark); }
+    .msg--error   { background: #FEE; color: var(--red); }
+
+    /* ── Match selector ── */
+    .match-option {
+      padding: 12px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .match-option:hover { border-color: var(--pitch); background: #f8fff9; }
+    .match-option.selected { border-color: var(--pitch); background: #E8F8EE; }
+
+    .match-option-teams {
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .match-option-meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── Knockout table ── */
+    .knockout-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .knockout-row:last-child { border-bottom: none; }
+
+    .knockout-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* ── Users list ── */
+    .user-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .user-row:last-child { border-bottom: none; }
+    .user-email { color: var(--muted); font-size: 12px; }
+
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--pitch);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- Lock Screen -->
+<div id="lock-screen">
+  <div class="lock-box">
+    <div class="lock-icon">⚙️</div>
+    <div class="lock-title">Admin Panel</div>
+    <p class="lock-sub">WC26 Predictor — restricted access</p>
+    <input type="password" id="admin-password" class="lock-input"
+      placeholder="••••••••" autocomplete="off" />
+    <button class="lock-btn" onclick="checkPassword()">Enter</button>
+    <div id="lock-error" class="lock-error hidden">Incorrect password</div>
+  </div>
+</div>
+
+<!-- Admin App -->
+<div id="admin-app" class="hidden">
+  <div class="admin-header">
+    <div class="admin-title">⚙️ Admin Panel</div>
+    <a href="index.html" class="admin-back">← Back to app</a>
+  </div>
+
+  <!-- Section 1: Enter prediction on behalf of user -->
+  <div class="admin-section">
+    <div class="section-title">Enter prediction for a user</div>
+    <p class="section-desc">Use this to submit a prediction on someone's behalf. Their existing prediction for this match will be overwritten.</p>
+
+    <div class="field">
+      <label>User email</label>
+      <input type="email" id="proxy-email" placeholder="user@example.com" />
+    </div>
+
+    <div class="field">
+      <label>Match</label>
+      <select id="proxy-match" onchange="onMatchSelect()">
+        <option value="">— Select a match —</option>
+      </select>
+    </div>
+
+    <div id="proxy-score-section" class="hidden">
+      <div class="field">
+        <label>Score prediction</label>
+        <div class="score-row">
+          <span class="score-team" id="proxy-home-label">Home</span>
+          <input type="number" id="proxy-home" min="0" max="20" value="0" />
+          <span class="score-dash">–</span>
+          <input type="number" id="proxy-away" min="0" max="20" value="0" />
+          <span class="score-team" id="proxy-away-label">Away</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>First goalscorer <span style="color:#F5C518;font-size:11px;">+2pts</span></label>
+        <select id="proxy-scorer">
+          <option value="">— No prediction / 0-0 draw —</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="admin-btn admin-btn--primary" onclick="submitProxyPrediction()" id="proxy-btn" disabled>
+      Save prediction
+    </button>
+    <div id="proxy-msg" class="hidden"></div>
+  </div>
+
+  <!-- Section 2: Update knockout teams -->
+  <div class="admin-section">
+    <div class="section-title">Update knockout teams</div>
+    <p class="section-desc">Fill in team names as they're confirmed after each round. Leave as TBD if not yet known.</p>
+
+    <div id="knockout-list"><div class="spinner"></div></div>
+
+    <button class="admin-btn admin-btn--primary" onclick="saveKnockoutTeams()" style="margin-top:16px;">
+      Save knockout teams
+    </button>
+    <div id="knockout-msg" class="hidden"></div>
+  </div>
+
+  <!-- Section 3: Users -->
+  <div class="admin-section">
+    <div class="section-title">Registered users</div>
+    <p class="section-desc">Everyone who has signed up so far.</p>
+    <div id="users-list"><div class="spinner"></div></div>
+  </div>
+
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="data/matches.js"></script>
+<script src="js/firebase-config.js"></script>
+
+<script>
+  // ── Password ────────────────────────────────────────────────
+  // Change this to whatever password you want for the admin panel
+  const ADMIN_PASSWORD = "wc2026admin";
+
+  function checkPassword() {
+    const val = document.getElementById('admin-password').value;
+    if (val === ADMIN_PASSWORD) {
+      document.getElementById('lock-screen').classList.add('hidden');
+      document.getElementById('admin-app').classList.remove('hidden');
+      loadAdminData();
+    } else {
+      document.getElementById('lock-error').classList.remove('hidden');
+      document.getElementById('admin-password').value = '';
+    }
+  }
+
+  document.getElementById('admin-password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') checkPassword();
+  });
+
+  // ── Load data ───────────────────────────────────────────────
+  let allMatches = [];
+  let knockoutMatches = [];
+
+  async function loadAdminData() {
+    const snap = await db.collection('matches').get();
+    allMatches = [];
+    snap.forEach(doc => allMatches.push({ id: doc.id, ...doc.data() }));
+    allMatches.sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+
+    populateMatchDropdown();
+    renderKnockoutList();
+    renderUsersList();
+  }
+
+  // ── Match dropdown ──────────────────────────────────────────
+  function populateMatchDropdown() {
+    const sel = document.getElementById('proxy-match');
+    const playable = allMatches.filter(m => !m.placeholder && m.home !== 'TBD');
+    playable.forEach(m => {
+      const kickoff = new Date(m.kickoff).toLocaleDateString('en-GB', {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.home} vs ${m.away} — ${kickoff}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function onMatchSelect() {
+    const matchId = document.getElementById('proxy-match').value;
+    const section = document.getElementById('proxy-score-section');
+    const btn = document.getElementById('proxy-btn');
+
+    if (!matchId) {
+      section.classList.add('hidden');
+      btn.disabled = true;
+      return;
+    }
+
+    const match = allMatches.find(m => m.id === matchId);
+    document.getElementById('proxy-home-label').textContent = match.home;
+    document.getElementById('proxy-away-label').textContent = match.away;
+
+    // Populate scorer dropdown
+    const scorerSel = document.getElementById('proxy-scorer');
+    scorerSel.innerHTML = '<option value="">— No prediction / 0-0 draw —</option>';
+    const homePlayers = WC2026_SQUADS[match.home] || [];
+    const awayPlayers = WC2026_SQUADS[match.away] || [];
+    [...homePlayers.map(p => `${p} (${match.home})`),
+     ...awayPlayers.map(p => `${p} (${match.away})`)].forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      scorerSel.appendChild(opt);
+    });
+
+    section.classList.remove('hidden');
+    btn.disabled = false;
+  }
+
+  // ── Submit proxy prediction ─────────────────────────────────
+  async function submitProxyPrediction() {
+    const email = document.getElementById('proxy-email').value.trim().toLowerCase();
+    const matchId = document.getElementById('proxy-match').value;
+    const homeScore = parseInt(document.getElementById('proxy-home').value);
+    const awayScore = parseInt(document.getElementById('proxy-away').value);
+    const firstScorer = document.getElementById('proxy-scorer').value;
+    const msgEl = document.getElementById('proxy-msg');
+    const btn = document.getElementById('proxy-btn');
+
+    if (!email || !matchId) {
+      showMsg(msgEl, 'Please fill in email and match', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      // Find user by email in Firestore
+      const usersSnap = await db.collection('users').where('email', '==', email).get();
+      if (usersSnap.empty) {
+        showMsg(msgEl, `No user found with email: ${email}`, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Save prediction';
+        return;
+      }
+
+      const userDoc = usersSnap.docs[0];
+      const userId = userDoc.id;
+
+      await db.collection('predictions').doc(`${userId}_${matchId}`).set({
+        userId,
+        matchId,
+        homeScore,
+        awayScore,
+        firstScorer: firstScorer || null,
+        points: null,
+        scored: false,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        addedByAdmin: true
+      });
+
+      showMsg(msgEl, `✓ Prediction saved for ${email}: ${homeScore}–${awayScore}${firstScorer ? ', scorer: ' + firstScorer : ''}`, 'success');
+      document.getElementById('proxy-home').value = 0;
+      document.getElementById('proxy-away').value = 0;
+      document.getElementById('proxy-scorer').value = '';
+    } catch (err) {
+      showMsg(msgEl, 'Error saving prediction: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save prediction';
+    }
+  }
+
+  // ── Knockout teams ──────────────────────────────────────────
+  function renderKnockoutList() {
+    knockoutMatches = allMatches.filter(m => m.placeholder);
+    const container = document.getElementById('knockout-list');
+
+    if (knockoutMatches.length === 0) {
+      container.innerHTML = '<p style="color:var(--muted);font-size:14px;">No knockout matches found.</p>';
+      return;
+    }
+
+    let html = '';
+    knockoutMatches.forEach(m => {
+      const kickoff = new Date(m.kickoff).toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'short'
+      });
+      html += `
+        <div class="knockout-row">
+          <span class="knockout-label">${m.stage}<br><span style="font-weight:400;text-transform:none;">${kickoff}</span></span>
+          <input type="text" id="ko-home-${m.id}" value="${m.home === 'TBD' ? '' : m.home}" placeholder="Home team" />
+          <input type="text" id="ko-away-${m.id}" value="${m.away === 'TBD' ? '' : m.away}" placeholder="Away team" />
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  async function saveKnockoutTeams() {
+    const msgEl = document.getElementById('knockout-msg');
+    const batch = db.batch();
+    let count = 0;
+
+    knockoutMatches.forEach(m => {
+      const home = document.getElementById(`ko-home-${m.id}`).value.trim() || 'TBD';
+      const away = document.getElementById(`ko-away-${m.id}`).value.trim() || 'TBD';
+      if (home !== m.home || away !== m.away) {
+        batch.update(db.collection('matches').doc(m.id), { home, away, placeholder: home === 'TBD' || away === 'TBD' });
+        count++;
+      }
+    });
+
+    if (count === 0) {
+      showMsg(msgEl, 'No changes to save', 'error');
+      return;
+    }
+
+    try {
+      await batch.commit();
+      showMsg(msgEl, `✓ ${count} match${count !== 1 ? 'es' : ''} updated successfully`, 'success');
+      await loadAdminData();
+    } catch (err) {
+      showMsg(msgEl, 'Error saving: ' + err.message, 'error');
+    }
+  }
+
+  // ── Users list ──────────────────────────────────────────────
+  async function renderUsersList() {
+    const snap = await db.collection('users').orderBy('totalPoints', 'desc').get();
+    const container = document.getElementById('users-list');
+
+    if (snap.empty) {
+      container.innerHTML = '<p style="color:var(--muted);font-size:14px;">No users yet.</p>';
+      return;
+    }
+
+    let html = '';
+    snap.forEach(doc => {
+      const u = doc.data();
+      html += `
+        <div class="user-row">
+          <div>
+            <div style="font-weight:600;">${u.displayName || 'Unknown'}</div>
+            <div class="user-email">${u.email}</div>
+          </div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--navy);">
+            ${u.totalPoints || 0} pts
+          </div>
+        </div>
+      `;
+    });
+    container.innerHTML = html;
+  }
+
+  // ── Utility ─────────────────────────────────────────────────
+  function showMsg(el, msg, type) {
+    el.textContent = msg;
+    el.className = `msg msg--${type}`;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+  }
+</script>
+
+</body>
+</html>
