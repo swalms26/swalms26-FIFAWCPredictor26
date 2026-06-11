@@ -430,18 +430,32 @@
 
 <script>
   // ── Password ────────────────────────────────────────────────
-  // Change this to whatever password you want for the admin panel
   const ADMIN_PASSWORD = "wc2026admin";
 
-  function checkPassword() {
+  // Sign in anonymously so Firestore rules are satisfied
+  async function checkPassword() {
     const val = document.getElementById('admin-password').value;
-    if (val === ADMIN_PASSWORD) {
+    if (val !== ADMIN_PASSWORD) {
+      document.getElementById('lock-error').classList.remove('hidden');
+      document.getElementById('admin-password').value = '';
+      return;
+    }
+
+    const btn = document.querySelector('.lock-btn');
+    btn.textContent = 'Loading...';
+    btn.disabled = true;
+
+    try {
+      // Sign in with Firebase so Firestore reads work
+      await firebase.auth().signInAnonymously();
       document.getElementById('lock-screen').classList.add('hidden');
       document.getElementById('admin-app').classList.remove('hidden');
       loadAdminData();
-    } else {
-      document.getElementById('lock-error').classList.remove('hidden');
-      document.getElementById('admin-password').value = '';
+    } catch(err) {
+      // If anonymous auth fails, try without auth (read-only fallback)
+      document.getElementById('lock-screen').classList.add('hidden');
+      document.getElementById('admin-app').classList.remove('hidden');
+      loadAdminData();
     }
   }
 
