@@ -98,60 +98,138 @@ const App = (() => {
 
   // ── Matches View ───────────────────────────────────────────
 
-  async function renderMatches() {
-    const matchesSnap = await db.collection('matches').get();
-    const predictionsSnap = await db.collection('predictions')
-      .where('userId', '==', currentUser.uid).get();
+  let matchViewMode = 'date'; // 'date' or 'group'
+  let cachedMatches = null;
+  let cachedPredictions = null;
 
-    const matches = [];
-    matchesSnap.forEach(doc => matches.push({ id: doc.id, ...doc.data() }));
-
-    const myPredictions = {};
-    predictionsSnap.forEach(doc => {
-      myPredictions[doc.data().matchId] = doc.data();
-    });
-
-    // Sort by kickoff
-    matches.sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-
-    // Group by stage
-    const stages = {};
-    matches.forEach(m => {
-      if (!stages[m.stage]) stages[m.stage] = [];
-      stages[m.stage].push(m);
-    });
-
+  async function renderMatches(forceRefresh) {
     const main = document.getElementById('main');
+
+    if (!cachedMatches || forceRefresh) {
+      main.innerHTML = '<div class="loading-spinner"></div>';
+      const matchesSnap = await db.collection('matches').get();
+      const predictionsSnap = await db.collection('predictions')
+        .where('userId', '==', currentUser.uid).get();
+
+      cachedMatches = [];
+      matchesSnap.forEach(doc => cachedMatches.push({ id: doc.id, ...doc.data() }));
+      cachedMatches.sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+
+      cachedPredictions = {};
+      predictionsSnap.forEach(doc => {
+        cachedPredictions[doc.data().matchId] = doc.data();
+      });
+    }
+
+    renderMatchesView(main, cachedMatches, cachedPredictions);
+  }
+
+  function renderMatchesView(main, matches, myPredictions) {
     let html = '<div class="matches-view">';
 
-    // Stage filter tabs
-    const stageNames = Object.keys(stages);
-    html += `<div class="stage-tabs">`;
-    stageNames.forEach((stage, i) => {
-      html += `<button class="stage-tab ${i === 0 ? 'stage-tab--active' : ''}" 
-        onclick="App.filterStage(this, '${escapeHtml(stage)}')">${escapeHtml(stage)}</button>`;
-    });
-    html += `</div>`;
+    // View toggle
+    html += `
+      <div class="view-toggle">
+        <button class="view-toggle-btn ${matchViewMode === 'date' ? 'view-toggle-btn--active' : ''}"
+          onclick="App.setMatchView('date')">By date</button>
+        <button class="view-toggle-btn ${matchViewMode === 'group' ? 'view-toggle-btn--active' : ''}"
+          onclick="App.setMatchView('group')">By group</button>
+      </div>
+    `;
 
-    // Match cards per stage
-    stageNames.forEach((stage, si) => {
-      html += `<div class="stage-group ${si === 0 ? '' : 'hidden'}" data-stage="${escapeHtml(stage)}">`;
-      html += `<h2 class="stage-heading">${escapeHtml(stage)}</h2>`;
-
-      stages[stage].forEach(match => {
+    if (matchViewMode === 'date') {
+      // Map each match to a broad stage bucket
+      function getStageBucket(match) {
         if (match.placeholder) {
-          html += renderPlaceholderCard(match);
-        } else {
-          const prediction = myPredictions[match.id] || null;
-          html += renderMatchCard(match, prediction);
+          const s = match.stage || '';
+          if (s === 'Round of 32')   return 'Round of 32';
+          if (s === 'Round of 16')   return 'Round of 16';
+          if (s === 'Quarter-final') return 'Quarter-finals';
+          if (s === 'Semi-final')    return 'Semi-finals';
+          if (s === 'Third Place')   return 'Third Place';
+          if (s === 'Final')         return 'Final';
+          return 'Knockout Stage';
         }
+        const stage = match.stage || '';
+        if (stage.startsWith('Group')) return 'Group Stage';
+        if (stage === 'Round of 32')   return 'Round of 32';
+        if (stage === 'Round of 16')   return 'Round of 16';
+        if (stage === 'Quarter-final') return 'Quarter-finals';
+        if (stage === 'Semi-final')    return 'Semi-finals';
+        if (stage === 'Third Place')   return 'Third Place';
+        if (stage === 'Final')         return 'Final';
+        return stage;
+      }
+
+      const bucketOrder = ['Group Stage','Round of 32','Round of 16','Quarter-finals','Semi-finals','Third Place','Final'];
+      const byBucket = {};
+      matches.forEach(m => {
+        const b = getStageBucket(m);
+        if (!byBucket[b]) byBucket[b] = [];
+        byBucket[b].push(m);
       });
 
-      html += '</div>';
-    });
+      // Tabs — only buckets that have matches
+      const activeBuckets = bucketOrder.filter(b => byBucket[b]);
+      html += `<div class="stage-tabs">`;
+      activeBuckets.forEach((bucket, i) => {
+        html += `<button class="stage-tab ${i === 0 ? 'stage-tab--active' : ''}"
+          onclick="App.filterStage(this, '${escapeHtml(bucket)}')">${escapeHtml(bucket)}</button>`;
+      });
+      html += `</div>`;
+
+      // Match cards per bucket, sorted by kickoff
+      activeBuckets.forEach((bucket, i) => {
+        const bucketMatches = byBucket[bucket].sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
+        html += `<div class="stage-group ${i === 0 ? '' : 'hidden'}" data-stage="${escapeHtml(bucket)}">`;
+        html += `<h2 class="stage-heading">${escapeHtml(bucket)}</h2>`;
+        bucketMatches.forEach(match => {
+          if (match.placeholder) {
+            html += renderPlaceholderCard(match);
+          } else {
+            html += renderMatchCard(match, myPredictions[match.id] || null);
+          }
+        });
+        html += '</div>';
+      });
+
+    } else {
+      // Group by stage/group
+      const byStage = {};
+      matches.forEach(m => {
+        if (!byStage[m.stage]) byStage[m.stage] = [];
+        byStage[m.stage].push(m);
+      });
+
+      const stageNames = Object.keys(byStage);
+      html += `<div class="stage-tabs">`;
+      stageNames.forEach((stage, i) => {
+        html += `<button class="stage-tab ${i === 0 ? 'stage-tab--active' : ''}"
+          onclick="App.filterStage(this, '${escapeHtml(stage)}')">${escapeHtml(stage)}</button>`;
+      });
+      html += `</div>`;
+
+      stageNames.forEach((stage, si) => {
+        html += `<div class="stage-group ${si === 0 ? '' : 'hidden'}" data-stage="${escapeHtml(stage)}">`;
+        html += `<h2 class="stage-heading">${escapeHtml(stage)}</h2>`;
+        byStage[stage].forEach(match => {
+          if (match.placeholder) {
+            html += renderPlaceholderCard(match);
+          } else {
+            html += renderMatchCard(match, myPredictions[match.id] || null);
+          }
+        });
+        html += '</div>';
+      });
+    }
 
     html += '</div>';
     main.innerHTML = html;
+  }
+
+  function setMatchView(mode) {
+    matchViewMode = mode;
+    renderMatchesView(document.getElementById('main'), cachedMatches, cachedPredictions);
   }
 
   function renderMatchCard(match, prediction) {
@@ -534,5 +612,5 @@ const App = (() => {
     return flags[country] || '🏳️';
   }
 
-  return { init, showView, filterStage, savePrediction, copyInviteLink, confirmSignOut };
+  return { init, showView, filterStage, setMatchView, savePrediction, copyInviteLink, confirmSignOut };
 })();
