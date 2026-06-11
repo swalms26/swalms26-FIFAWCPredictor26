@@ -356,6 +356,53 @@
     <a href="index.html" class="admin-back">← Back to app</a>
   </div>
 
+  <!-- Section 0: Enter match result -->
+  <div class="admin-section">
+    <div class="section-title">⚽ Enter match result</div>
+    <p class="section-desc">Enter the final score after a match finishes. Points will be calculated and awarded to all players automatically.</p>
+
+    <div class="field">
+      <label>Match</label>
+      <select id="result-match" onchange="onResultMatchSelect()">
+        <option value="">— Select a completed match —</option>
+      </select>
+    </div>
+
+    <div id="result-score-section" class="hidden">
+      <div class="field">
+        <label>Final score</label>
+        <div class="score-row">
+          <span class="score-team" id="result-home-label">Home</span>
+          <input type="number" id="result-home" min="0" max="20" value="0" />
+          <span class="score-dash">–</span>
+          <input type="number" id="result-away" min="0" max="20" value="0" />
+          <span class="score-team" id="result-away-label">Away</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>First goalscorer <span style="color:#F5C518;font-size:11px;">+2pts</span></label>
+        <select id="result-scorer">
+          <option value="">— No goalscorer / 0-0 draw —</option>
+        </select>
+      </div>
+
+      <div id="result-already-processed" class="hidden" style="background:#FFF3CD;border:1px solid #FFC107;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px;color:#856404;">
+        ⚠️ This match has already been processed. Saving again will undo the previous result and recalculate points.
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="admin-btn admin-btn--primary" onclick="submitMatchResult()" id="result-btn" disabled>
+          Save result &amp; calculate points
+        </button>
+        <button class="admin-btn admin-btn--danger" id="result-undo-btn" onclick="undoMatchResult()" style="display:none;">
+          Undo result
+        </button>
+      </div>
+    </div>
+    <div id="result-msg" class="hidden"></div>
+  </div>
+
   <!-- Section 1: Enter prediction on behalf of user -->
   <div class="admin-section">
     <div class="section-title">Enter prediction for a user</div>
@@ -427,6 +474,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="data/matches.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/scoring.js"></script>
 
 <script>
   // ── Password ────────────────────────────────────────────────
@@ -483,9 +531,139 @@
       console.warn('Could not load Firestore matches, using local data', e);
     }
 
+    populateResultMatchDropdown();
     populateMatchDropdown();
     renderKnockoutList();
     renderUsersList();
+  }
+
+  // ── Result match dropdown ──────────────────────────────────
+  function populateResultMatchDropdown() {
+    const sel = document.getElementById('result-match');
+    // Show all non-placeholder, non-TBD matches
+    const playable = allMatches.filter(m => !m.placeholder && m.home !== 'TBD');
+    playable.forEach(m => {
+      const kickoff = new Date(m.kickoff).toLocaleDateString('en-GB', {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+      });
+      const processed = m.processed ? ' ✓' : '';
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.home} vs ${m.away} — ${kickoff}${processed}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function onResultMatchSelect() {
+    const matchId = document.getElementById('result-match').value;
+    const section = document.getElementById('result-score-section');
+    const btn = document.getElementById('result-btn');
+    const undoBtn = document.getElementById('result-undo-btn');
+    const alreadyProcessed = document.getElementById('result-already-processed');
+
+    if (!matchId) {
+      section.classList.add('hidden');
+      btn.disabled = true;
+      return;
+    }
+
+    const match = allMatches.find(m => m.id === matchId);
+    document.getElementById('result-home-label').textContent = match.home;
+    document.getElementById('result-away-label').textContent = match.away;
+
+    // Pre-fill if already processed
+    if (match.result) {
+      document.getElementById('result-home').value = match.result.homeScore ?? 0;
+      document.getElementById('result-away').value = match.result.awayScore ?? 0;
+      alreadyProcessed.classList.remove('hidden');
+      undoBtn.style.display = 'inline-block';
+    } else {
+      document.getElementById('result-home').value = 0;
+      document.getElementById('result-away').value = 0;
+      alreadyProcessed.classList.add('hidden');
+      undoBtn.style.display = 'none';
+    }
+
+    // Populate scorer dropdown
+    const scorerSel = document.getElementById('result-scorer');
+    scorerSel.innerHTML = '<option value="">— No goalscorer / 0-0 draw —</option>';
+    const homePlayers = WC2026_SQUADS[match.home] || [];
+    const awayPlayers = WC2026_SQUADS[match.away] || [];
+    [...homePlayers.map(p => `${p} (${match.home})`),
+     ...awayPlayers.map(p => `${p} (${match.away})`)].forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = p;
+      // Pre-select if already set
+      if (match.result && match.result.firstScorer === p) opt.selected = true;
+      scorerSel.appendChild(opt);
+    });
+
+    section.classList.remove('hidden');
+    btn.disabled = false;
+  }
+
+  async function submitMatchResult() {
+    const matchId = document.getElementById('result-match').value;
+    const homeScore = parseInt(document.getElementById('result-home').value);
+    const awayScore = parseInt(document.getElementById('result-away').value);
+    const firstScorer = document.getElementById('result-scorer').value;
+    const msgEl = document.getElementById('result-msg');
+    const btn = document.getElementById('result-btn');
+
+    if (!matchId) {
+      showMsg(msgEl, 'Please select a match', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+
+    try {
+      // If already processed, undo first
+      const match = allMatches.find(m => m.id === matchId);
+      if (match.processed) {
+        await Scoring.unprocessMatch(matchId);
+      }
+
+      const usersCount = await Scoring.processMatchResults(matchId, {
+        homeScore,
+        awayScore,
+        firstScorer: firstScorer || null,
+        status: 'FT'
+      });
+
+      showMsg(msgEl, `✓ Result saved: ${match.home} ${homeScore}–${awayScore} ${match.away}${firstScorer ? ` · First scorer: ${firstScorer}` : ''}. Points awarded to ${usersCount} player(s)!`, 'success');
+
+      // Refresh data
+      await loadAdminData();
+      document.getElementById('result-score-section').classList.add('hidden');
+      document.getElementById('result-match').value = '';
+
+    } catch (err) {
+      showMsg(msgEl, 'Error: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save result & calculate points';
+    }
+  }
+
+  async function undoMatchResult() {
+    const matchId = document.getElementById('result-match').value;
+    const msgEl = document.getElementById('result-msg');
+    if (!matchId) return;
+    if (!confirm('Undo this result? All points for this match will be removed and recalculated when you re-enter the result.')) return;
+
+    try {
+      await Scoring.unprocessMatch(matchId);
+      showMsg(msgEl, '✓ Result undone. You can now re-enter the correct score.', 'success');
+      await loadAdminData();
+      document.getElementById('result-score-section').classList.add('hidden');
+      document.getElementById('result-match').value = '';
+    } catch (err) {
+      showMsg(msgEl, 'Error: ' + err.message, 'error');
+    }
   }
 
   // ── Match dropdown ──────────────────────────────────────────
