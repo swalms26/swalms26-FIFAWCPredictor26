@@ -454,10 +454,20 @@
   let knockoutMatches = [];
 
   async function loadAdminData() {
-    const snap = await db.collection('matches').get();
-    allMatches = [];
-    snap.forEach(doc => allMatches.push({ id: doc.id, ...doc.data() }));
+    // Use local match data for the dropdown (no auth needed)
+    allMatches = WC2026_MATCHES.map(m => ({ ...m }));
     allMatches.sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+
+    // Merge any Firestore overrides for knockout teams (best effort)
+    try {
+      const snap = await db.collection('matches').get();
+      snap.forEach(doc => {
+        const idx = allMatches.findIndex(m => m.id === doc.id);
+        if (idx !== -1) allMatches[idx] = { id: doc.id, ...doc.data() };
+      });
+    } catch(e) {
+      console.warn('Could not load Firestore matches, using local data', e);
+    }
 
     populateMatchDropdown();
     renderKnockoutList();
