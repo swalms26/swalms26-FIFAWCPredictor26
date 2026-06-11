@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WC26 Predictor</title>
+  <meta name="description" content="FIFA World Cup 2026 score predictor — predict scores, first goalscorers, and climb the leaderboard." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loading-ball">⚽</div>
+    <div id="loading-msg">Loading...</div>
+  </div>
+
+  <!-- Auth Screen -->
+  <div id="auth-screen" class="hidden">
+    <div class="auth-box">
+      <div class="auth-logo">⚽</div>
+      <h1 class="auth-title">WC26<br>Predictor</h1>
+      <p class="auth-subtitle">Enter your email to receive a sign-in link.<br>No password needed.</p>
+      <div class="auth-form">
+        <input type="email" id="auth-email" class="auth-input"
+          placeholder="your@email.com" autocomplete="email" />
+        <button class="auth-btn" onclick="handleSendLink()">Send sign-in link →</button>
+      </div>
+      <div id="auth-success" class="auth-success hidden"></div>
+      <div id="auth-error" class="auth-error hidden"></div>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="hidden">
+    <nav id="nav"></nav>
+    <main id="main"></main>
+  </div>
+
+  <!-- Firebase SDKs (compat v9) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- App Scripts -->
+  <script src="data/matches.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/app.js"></script>
+
+  <script>
+    // ── Boot sequence ──────────────────────────────────────
+
+    function showLoading(msg) {
+      document.getElementById('loading-screen').classList.remove('hidden');
+      document.getElementById('loading-msg').textContent = msg || 'Loading...';
+      document.getElementById('auth-screen').classList.add('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loading-screen').classList.add('hidden');
+    }
+
+    // 1. Check if this is an email sign-in link callback
+    const handledLink = Auth.checkEmailLink();
+
+    if (!handledLink) {
+      // 2. Listen for auth state
+      firebase.auth().onAuthStateChanged(async (user) => {
+        if (user) {
+          showLoading('Loading your predictions...');
+          await App.init(user);
+        } else {
+          hideLoading();
+          document.getElementById('auth-screen').classList.remove('hidden');
+          document.getElementById('auth-email').focus();
+        }
+      });
+    }
+
+    // Send magic link
+    function handleSendLink() {
+      const email = document.getElementById('auth-email').value.trim();
+      const errorEl = document.getElementById('auth-error');
+      const successEl = document.getElementById('auth-success');
+
+      errorEl.classList.add('hidden');
+      successEl.classList.add('hidden');
+
+      if (!email || !email.includes('@')) {
+        errorEl.textContent = 'Please enter a valid email address';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      const btn = document.querySelector('.auth-btn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      Auth.sendSignInLink(email)
+        .then(() => {
+          successEl.innerHTML = `
+            Check your inbox at <strong>${email}</strong><br>
+            Click the link in the email to sign in.
+          `;
+          successEl.classList.remove('hidden');
+          btn.textContent = 'Resend link';
+          btn.disabled = false;
+        })
+        .catch((err) => {
+          errorEl.textContent = 'Could not send the link. Please try again.';
+          errorEl.classList.remove('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Send sign-in link →';
+          console.error(err);
+        });
+    }
+
+    // Allow Enter key on email input
+    document.getElementById('auth-email')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleSendLink();
+    });
+  </script>
+
+</body>
+</html>

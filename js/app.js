@@ -1,0 +1,506 @@
+// ============================================================
+// MAIN APP MODULE
+// Renders all views: matches, predictions, leaderboard
+// ============================================================
+
+const App = (() => {
+
+  let currentUser = null;
+  let currentView = 'matches';
+  let livePollingInterval = null;
+
+  // ── Bootstrap ──────────────────────────────────────────────
+
+  async function init(user) {
+    currentUser = user;
+
+    // Ensure user doc exists
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    if (!userDoc.exists) {
+      await db.collection('users').doc(user.uid).set({
+        displayName: user.displayName || user.email.split('@')[0],
+        email: user.email,
+        totalPoints: 0,
+        joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    // Seed matches if not yet done (first-time setup)
+    await seedMatchesIfNeeded();
+
+    // Show main app
+    document.getElementById('loading-screen').classList.add('hidden');
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+
+    // Render nav
+    renderNav();
+    showView('matches');
+
+    // Start live polling every 60 seconds
+    livePollingInterval = setInterval(() => Scoring.pollLiveMatches(), 60000);
+    Scoring.pollLiveMatches(); // immediate first poll
+  }
+
+  async function seedMatchesIfNeeded() {
+    const snap = await db.collection('matches').limit(1).get();
+    if (!snap.empty) return; // already seeded
+
+    console.log('Seeding match data...');
+    const batch = db.batch();
+    WC2026_MATCHES.forEach(match => {
+      const ref = db.collection('matches').doc(match.id);
+      batch.set(ref, {
+        ...match,
+        processed: false,
+        liveResult: null,
+        result: null
+      });
+    });
+    await batch.commit();
+    console.log('Matches seeded.');
+  }
+
+  // ── Navigation ─────────────────────────────────────────────
+
+  function renderNav() {
+    const nav = document.getElementById('nav');
+    nav.innerHTML = `
+      <div class="nav-inner">
+        <div class="nav-brand">
+          <span class="nav-ball">⚽</span>
+          <span class="nav-title">WC26 Predictor</span>
+        </div>
+        <div class="nav-links">
+          <button class="nav-btn" data-view="matches" onclick="App.showView('matches')">Matches</button>
+          <button class="nav-btn" data-view="leaderboard" onclick="App.showView('leaderboard')">Leaderboard</button>
+          <button class="nav-btn nav-btn--user" onclick="App.showView('profile')">
+            ${escapeHtml(currentUser.displayName || 'Me')}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function showView(view) {
+    currentView = view;
+    // Update nav active state
+    document.querySelectorAll('.nav-btn[data-view]').forEach(btn => {
+      btn.classList.toggle('nav-btn--active', btn.dataset.view === view);
+    });
+    const main = document.getElementById('main');
+    main.innerHTML = '<div class="loading-spinner"></div>';
+
+    if (view === 'matches') renderMatches();
+    else if (view === 'leaderboard') renderLeaderboard();
+    else if (view === 'profile') renderProfile();
+  }
+
+  // ── Matches View ───────────────────────────────────────────
+
+  async function renderMatches() {
+    const matchesSnap = await db.collection('matches').get();
+    const predictionsSnap = await db.collection('predictions')
+      .where('userId', '==', currentUser.uid).get();
+
+    const matches = [];
+    matchesSnap.forEach(doc => matches.push({ id: doc.id, ...doc.data() }));
+
+    const myPredictions = {};
+    predictionsSnap.forEach(doc => {
+      myPredictions[doc.data().matchId] = doc.data();
+    });
+
+    // Sort by kickoff
+    matches.sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+
+    // Group by stage
+    const stages = {};
+    matches.forEach(m => {
+      if (!stages[m.stage]) stages[m.stage] = [];
+      stages[m.stage].push(m);
+    });
+
+    const main = document.getElementById('main');
+    let html = '<div class="matches-view">';
+
+    // Stage filter tabs
+    const stageNames = Object.keys(stages);
+    html += `<div class="stage-tabs">`;
+    stageNames.forEach((stage, i) => {
+      html += `<button class="stage-tab ${i === 0 ? 'stage-tab--active' : ''}" 
+        onclick="App.filterStage(this, '${escapeHtml(stage)}')">${escapeHtml(stage)}</button>`;
+    });
+    html += `</div>`;
+
+    // Match cards per stage
+    stageNames.forEach((stage, si) => {
+      html += `<div class="stage-group ${si === 0 ? '' : 'hidden'}" data-stage="${escapeHtml(stage)}">`;
+      html += `<h2 class="stage-heading">${escapeHtml(stage)}</h2>`;
+
+      stages[stage].forEach(match => {
+        if (match.placeholder) {
+          html += renderPlaceholderCard(match);
+        } else {
+          const prediction = myPredictions[match.id] || null;
+          html += renderMatchCard(match, prediction);
+        }
+      });
+
+      html += '</div>';
+    });
+
+    html += '</div>';
+    main.innerHTML = html;
+  }
+
+  function renderMatchCard(match, prediction) {
+    const now = new Date();
+    const kickoff = new Date(match.kickoff);
+    const lockTime = new Date(kickoff.getTime() + PREDICTION_LOCK_MINUTES * 60 * 1000);
+    const isLocked = now >= lockTime;
+    const isFinished = match.result && ['FT','AET','PEN'].includes(match.result.status);
+    const isLive = match.liveResult && match.liveResult.isLive;
+
+    const kickoffLocal = kickoff.toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
+
+    let statusBadge = '';
+    if (isFinished) statusBadge = '<span class="badge badge--ft">FT</span>';
+    else if (isLive) statusBadge = `<span class="badge badge--live">LIVE ${match.liveResult.elapsed || ''}'</span>`;
+    else if (isLocked) statusBadge = '<span class="badge badge--locked">Locked</span>';
+    else statusBadge = '<span class="badge badge--open">Open</span>';
+
+    // Score display
+    let scoreDisplay = '';
+    if (isFinished && match.result) {
+      scoreDisplay = `<div class="match-score-real">${match.result.homeScore} – ${match.result.awayScore}</div>`;
+    } else if (isLive && match.liveResult) {
+      scoreDisplay = `<div class="match-score-live">${match.liveResult.homeScore ?? '?'} – ${match.liveResult.awayScore ?? '?'}</div>`;
+    } else {
+      scoreDisplay = `<div class="match-score-vs">vs</div>`;
+    }
+
+    // Points earned
+    let pointsDisplay = '';
+    if (prediction && prediction.scored) {
+      pointsDisplay = `<div class="prediction-points pts-${prediction.points}">${prediction.points} pt${prediction.points !== 1 ? 's' : ''}</div>`;
+    }
+
+    return `
+      <div class="match-card ${isLocked ? 'match-card--locked' : ''} ${isLive ? 'match-card--live' : ''}">
+        <div class="match-card-header">
+          <span class="match-venue">${escapeHtml(match.venue)}</span>
+          ${statusBadge}
+        </div>
+        <div class="match-teams">
+          <div class="team team--home">
+            <span class="team-flag">${getFlag(match.home)}</span>
+            <span class="team-name">${escapeHtml(match.home)}</span>
+          </div>
+          ${scoreDisplay}
+          <div class="team team--away">
+            <span class="team-name">${escapeHtml(match.away)}</span>
+            <span class="team-flag">${getFlag(match.away)}</span>
+          </div>
+        </div>
+        <div class="match-kickoff">${kickoffLocal}</div>
+        ${renderPredictionSection(match, prediction, isLocked, isFinished)}
+        ${pointsDisplay}
+      </div>
+    `;
+  }
+
+  function renderPredictionSection(match, prediction, isLocked, isFinished) {
+    if (isLocked && !prediction) {
+      return `<div class="prediction-empty">No prediction entered</div>`;
+    }
+    if (isLocked && prediction) {
+      // Show what was predicted
+      const scorerLine = prediction.firstScorer
+        ? `<span class="pred-scorer">⚡ ${escapeHtml(prediction.firstScorer)}</span>`
+        : '';
+      return `
+        <div class="prediction-submitted">
+          <span class="pred-score">${prediction.homeScore} – ${prediction.awayScore}</span>
+          ${scorerLine}
+          <span class="pred-label">Your prediction</span>
+        </div>
+      `;
+    }
+
+    // Open for prediction
+    const homePlayers = WC2026_SQUADS[match.home] || [];
+    const awayPlayers = WC2026_SQUADS[match.away] || [];
+    const allPlayers = [
+      ...homePlayers.map(p => `${p} (${match.home})`),
+      ...awayPlayers.map(p => `${p} (${match.away})`)
+    ];
+
+    const existingHome = prediction ? prediction.homeScore : '';
+    const existingAway = prediction ? prediction.awayScore : '';
+    const existingScorer = prediction ? prediction.firstScorer : '';
+
+    return `
+      <div class="prediction-form" data-match-id="${match.id}">
+        <div class="score-inputs">
+          <label class="score-label">${escapeHtml(match.home)}</label>
+          <input type="number" class="score-input" min="0" max="20" 
+            id="home-${match.id}" value="${existingHome}" placeholder="0" />
+          <span class="score-dash">–</span>
+          <input type="number" class="score-input" min="0" max="20"
+            id="away-${match.id}" value="${existingAway}" placeholder="0" />
+          <label class="score-label">${escapeHtml(match.away)}</label>
+        </div>
+        <div class="scorer-select">
+          <label class="scorer-label">First goalscorer <span class="pts-tag">+2pts</span></label>
+          <select id="scorer-${match.id}" class="scorer-dropdown">
+            <option value="">— No prediction / 0-0 draw —</option>
+            ${allPlayers.map(p => `<option value="${escapeHtml(p)}" ${existingScorer === p ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="predict-btn" onclick="App.savePrediction('${match.id}')">
+          ${prediction ? 'Update prediction' : 'Save prediction'}
+        </button>
+        <div id="pred-msg-${match.id}" class="pred-msg hidden"></div>
+      </div>
+    `;
+  }
+
+  function renderPlaceholderCard(match) {
+    const kickoffDate = new Date(match.kickoff).toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short'
+    });
+    return `
+      <div class="match-card match-card--placeholder">
+        <div class="match-card-header">
+          <span class="match-venue">${match.venue !== 'TBD' ? escapeHtml(match.venue) : 'Venue TBD'}</span>
+          <span class="badge badge--tbd">TBD</span>
+        </div>
+        <div class="match-teams">
+          <div class="team"><span class="team-name placeholder-name">TBD</span></div>
+          <div class="match-score-vs">vs</div>
+          <div class="team"><span class="team-name placeholder-name">TBD</span></div>
+        </div>
+        <div class="match-kickoff">${kickoffDate}</div>
+        <div class="placeholder-note">Teams confirmed after group stage</div>
+      </div>
+    `;
+  }
+
+  function filterStage(btn, stage) {
+    document.querySelectorAll('.stage-tab').forEach(t => t.classList.remove('stage-tab--active'));
+    btn.classList.add('stage-tab--active');
+    document.querySelectorAll('.stage-group').forEach(g => {
+      g.classList.toggle('hidden', g.dataset.stage !== stage);
+    });
+  }
+
+  // ── Save Prediction ────────────────────────────────────────
+
+  async function savePrediction(matchId) {
+    const homeInput = document.getElementById(`home-${matchId}`);
+    const awayInput = document.getElementById(`away-${matchId}`);
+    const scorerSelect = document.getElementById(`scorer-${matchId}`);
+    const msgEl = document.getElementById(`pred-msg-${matchId}`);
+
+    const homeScore = homeInput.value.trim();
+    const awayScore = awayInput.value.trim();
+    const firstScorer = scorerSelect.value;
+
+    if (homeScore === '' || awayScore === '') {
+      showPredMsg(msgEl, 'Please enter a score for both teams', 'error');
+      return;
+    }
+
+    // Double check lock
+    const matchDoc = await db.collection('matches').doc(matchId).get();
+    const match = matchDoc.data();
+    const lockTime = new Date(new Date(match.kickoff).getTime() + PREDICTION_LOCK_MINUTES * 60 * 1000);
+    if (new Date() >= lockTime) {
+      showPredMsg(msgEl, 'This match is now locked', 'error');
+      return;
+    }
+
+    const btn = document.querySelector(`[data-match-id="${matchId}"] .predict-btn`);
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      await db.collection('predictions').doc(`${currentUser.uid}_${matchId}`).set({
+        userId: currentUser.uid,
+        matchId,
+        homeScore: parseInt(homeScore),
+        awayScore: parseInt(awayScore),
+        firstScorer: firstScorer || null,
+        points: null,
+        scored: false,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      showPredMsg(msgEl, '✓ Prediction saved!', 'success');
+      btn.textContent = 'Update prediction';
+    } catch (err) {
+      showPredMsg(msgEl, 'Could not save. Please try again.', 'error');
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function showPredMsg(el, msg, type) {
+    el.textContent = msg;
+    el.className = `pred-msg pred-msg--${type}`;
+    setTimeout(() => el.classList.add('hidden'), 3000);
+  }
+
+  // ── Leaderboard View ───────────────────────────────────────
+
+  async function renderLeaderboard() {
+    const usersSnap = await db.collection('users').orderBy('totalPoints', 'desc').get();
+    const main = document.getElementById('main');
+
+    let html = '<div class="leaderboard-view">';
+    html += '<h2 class="view-heading">Leaderboard</h2>';
+
+    if (usersSnap.empty) {
+      html += '<p class="empty-state">No scores yet — predictions are still being collected!</p>';
+    } else {
+      html += '<div class="leaderboard-table">';
+      html += `
+        <div class="lb-row lb-row--header">
+          <span class="lb-rank">#</span>
+          <span class="lb-name">Player</span>
+          <span class="lb-pts">Points</span>
+        </div>
+      `;
+
+      let rank = 1;
+      usersSnap.forEach(doc => {
+        const user = doc.data();
+        const isMe = doc.id === currentUser.uid;
+        const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+
+        html += `
+          <div class="lb-row ${isMe ? 'lb-row--me' : ''}">
+            <span class="lb-rank">${medal || rank}</span>
+            <span class="lb-name">${escapeHtml(user.displayName || 'Anonymous')}</span>
+            <span class="lb-pts">${user.totalPoints || 0}</span>
+          </div>
+        `;
+        rank++;
+      });
+
+      html += '</div>';
+      html += '<p class="lb-key">3pts correct score · 1pt correct result · 2pts first goalscorer</p>';
+    }
+
+    html += '</div>';
+    main.innerHTML = html;
+  }
+
+  // ── Profile View ───────────────────────────────────────────
+
+  async function renderProfile() {
+    const userDoc = await db.collection('users').doc(currentUser.uid).get();
+    const userData = userDoc.data() || {};
+
+    const predictionsSnap = await db.collection('predictions')
+      .where('userId', '==', currentUser.uid)
+      .where('scored', '==', true)
+      .get();
+
+    let correct3 = 0, correct1 = 0, correct2 = 0, total = 0;
+    predictionsSnap.forEach(doc => {
+      const p = doc.data();
+      correct3 += p.breakdown?.score || 0;
+      correct1 += p.breakdown?.result || 0;
+      correct2 += p.breakdown?.scorer || 0;
+      total += p.points || 0;
+    });
+
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="profile-view">
+        <h2 class="view-heading">Your stats</h2>
+        <div class="profile-card">
+          <div class="profile-name">${escapeHtml(userData.displayName || currentUser.email)}</div>
+          <div class="profile-email">${escapeHtml(currentUser.email)}</div>
+          <div class="profile-stats">
+            <div class="stat-box">
+              <div class="stat-val">${userData.totalPoints || 0}</div>
+              <div class="stat-key">Total points</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val">${Math.round(correct3/3)}</div>
+              <div class="stat-key">Exact scores</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val">${Math.round(correct1)}</div>
+              <div class="stat-key">Correct results</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-val">${Math.round(correct2/2)}</div>
+              <div class="stat-key">First scorers</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-actions">
+          <button class="profile-btn" onclick="App.copyInviteLink()">Copy invite link</button>
+          <div id="invite-copied" class="hidden invite-copied">Link copied to clipboard!</div>
+          <button class="profile-btn profile-btn--danger" onclick="App.confirmSignOut()">Sign out</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function copyInviteLink() {
+    const link = window.location.origin + window.location.pathname;
+    navigator.clipboard.writeText(link).then(() => {
+      const el = document.getElementById('invite-copied');
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    });
+  }
+
+  function confirmSignOut() {
+    if (confirm('Sign out?')) {
+      clearInterval(livePollingInterval);
+      Auth.signOut().then(() => window.location.reload());
+    }
+  }
+
+  // ── Utilities ──────────────────────────────────────────────
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function getFlag(country) {
+    const flags = {
+      "Argentina":"🇦🇷","France":"🇫🇷","Brazil":"🇧🇷","England":"󠁧󠁢󠁥󠁮󠁧󠁿",
+      "Germany":"🇩🇪","Spain":"🇪🇸","Portugal":"🇵🇹","Netherlands":"🇳🇱",
+      "Belgium":"🇧🇪","Italy":"🇮🇹","Uruguay":"🇺🇾","Colombia":"🇨🇴",
+      "Mexico":"🇲🇽","USA":"🇺🇸","Japan":"🇯🇵","South Korea":"🇰🇷",
+      "Morocco":"🇲🇦","Senegal":"🇸🇳","Croatia":"🇭🇷","Serbia":"🇷🇸",
+      "Switzerland":"🇨🇭","Denmark":"🇩🇰","Australia":"🇦🇺","Tunisia":"🇹🇳",
+      "Iran":"🇮🇷","Saudi Arabia":"🇸🇦","Poland":"🇵🇱","Wales":"🏴󠁧󠁢󠁷󠁬󠁳󠁿",
+      "Ghana":"🇬🇭","Ecuador":"🇪🇨","Qatar":"🇶🇦","Costa Rica":"🇨🇷",
+      "Canada":"🇨🇦","Nigeria":"🇳🇬","Cameroon":"🇨🇲","South Africa":"🇿🇦",
+      "Ivory Coast":"🇨🇮","Chile":"🇨🇱","Venezuela":"🇻🇪","Hungary":"🇭🇺",
+      "New Zealand":"🇳🇿","Egypt":"🇪🇬","DR Congo":"🇨🇩","Paraguay":"🇵🇾",
+      "Iraq":"🇮🇶","Albania":"🇦🇱","Austria":"🇦🇹","Turkey":"🇹🇷"
+    };
+    return flags[country] || '🏳️';
+  }
+
+  return { init, showView, filterStage, savePrediction, copyInviteLink, confirmSignOut };
+})();
