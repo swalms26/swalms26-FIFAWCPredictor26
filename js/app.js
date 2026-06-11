@@ -18,7 +18,7 @@ const App = (() => {
     const userDoc = await db.collection('users').doc(user.uid).get();
     if (!userDoc.exists) {
       await db.collection('users').doc(user.uid).set({
-        displayName: user.displayName || user.email.split('@')[0],
+        displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Player'),
         email: user.email,
         totalPoints: 0,
         joinedAt: firebase.firestore.FieldValue.serverTimestamp()
