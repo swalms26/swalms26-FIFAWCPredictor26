@@ -1,29 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Users can read all user docs (for leaderboard),
-    // but only write their own
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.token.firebase.sign_in_provider == 'anonymous'
+      );
     }
-
-    // Matches are readable by all signed-in users, not writable
     match /matches/{matchId} {
-      allow read: if request.auth != null;
-      allow write: if false; // only writable via server/admin SDK
+      allow read: if true;
+      allow write: if request.auth != null;
     }
-
-    // Predictions: users can read all (for leaderboard detail),
-    // but only write their own
     match /predictions/{predId} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.auth.uid == resource.data.userId
-        || (request.auth != null && !exists(/databases/$(database)/documents/predictions/$(predId)));
-      allow write: if request.auth != null
-        && request.auth.uid == request.resource.data.userId;
+      allow read: if true;
+      allow write: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid ||
+        request.auth.token.firebase.sign_in_provider == 'anonymous'
+      );
     }
   }
 }
