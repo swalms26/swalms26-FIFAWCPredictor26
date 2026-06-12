@@ -254,6 +254,36 @@ body {
   margin-bottom: 24px;
 }
 
+/* ── View Toggle ──────────────────────────────────────────── */
+.view-toggle {
+  display: inline-flex;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  margin-bottom: 20px;
+  gap: 2px;
+}
+
+.view-toggle-btn {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-toggle-btn:hover { color: var(--text-main); }
+.view-toggle-btn--active {
+  background: var(--navy);
+  color: var(--white);
+}
+
 /* ── Stage Tabs ───────────────────────────────────────────── */
 .stage-tabs {
   display: flex;
