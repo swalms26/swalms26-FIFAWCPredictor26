@@ -576,7 +576,7 @@ const App = (() => {
   function confirmSignOut() {
     if (confirm('Sign out?')) {
       clearInterval(livePollingInterval);
-      Auth.signOut().then(() => window.location.reload());
+      firebase.auth().signOut().then(() => window.location.reload());
     }
   }
 
