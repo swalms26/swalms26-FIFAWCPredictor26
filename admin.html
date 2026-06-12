@@ -489,22 +489,9 @@
       return;
     }
 
-    const btn = document.querySelector('.lock-btn');
-    btn.textContent = 'Loading...';
-    btn.disabled = true;
-
-    try {
-      // Sign in with Firebase so Firestore reads work
-      await firebase.auth().signInAnonymously();
-      document.getElementById('lock-screen').classList.add('hidden');
-      document.getElementById('admin-app').classList.remove('hidden');
-      loadAdminData();
-    } catch(err) {
-      // If anonymous auth fails, try without auth (read-only fallback)
-      document.getElementById('lock-screen').classList.add('hidden');
-      document.getElementById('admin-app').classList.remove('hidden');
-      loadAdminData();
-    }
+    document.getElementById('lock-screen').classList.add('hidden');
+    document.getElementById('admin-app').classList.remove('hidden');
+    loadAdminData();
   }
 
   document.getElementById('admin-password').addEventListener('keydown', e => {
