@@ -102,11 +102,18 @@ const Scoring = (() => {
 
     await batch.commit();
 
-    // Update user point totals
+    // Update user point totals (skip missing users)
     for (const [userId, pts] of Object.entries(userPointsMap)) {
-      await db.collection('users').doc(userId).update({
-        totalPoints: firebase.firestore.FieldValue.increment(pts)
-      });
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (userDoc.exists) {
+          await db.collection('users').doc(userId).update({
+            totalPoints: firebase.firestore.FieldValue.increment(pts)
+          });
+        }
+      } catch(e) {
+        console.warn('Could not update points for user', userId, e);
+      }
     }
 
     return Object.keys(userPointsMap).length;
@@ -142,11 +149,19 @@ const Scoring = (() => {
 
     await batch.commit();
 
+    // Update user totals, skip deleted users
     for (const [userId, pts] of Object.entries(userPointsMap)) {
       if (pts !== 0) {
-        await db.collection('users').doc(userId).update({
-          totalPoints: firebase.firestore.FieldValue.increment(pts)
-        });
+        try {
+          const userDoc = await db.collection('users').doc(userId).get();
+          if (userDoc.exists) {
+            await db.collection('users').doc(userId).update({
+              totalPoints: firebase.firestore.FieldValue.increment(pts)
+            });
+          }
+        } catch(e) {
+          console.warn('Could not update points for user', userId, e);
+        }
       }
     }
   }
