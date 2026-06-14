@@ -100,6 +100,9 @@ const App = (() => {
   let cachedMatches = null;
   let cachedPredictions = null;
 
+  let cachedAllPredictions = null; // matchId -> array of predictions (all users)
+  let cachedUsers = null; // userId -> { displayName }
+
   async function renderMatches(forceRefresh) {
     const main = document.getElementById('main');
 
@@ -108,6 +111,8 @@ const App = (() => {
       const matchesSnap = await db.collection('matches').get();
       const predictionsSnap = await db.collection('predictions')
         .where('userId', '==', currentUser.uid).get();
+      const allPredsSnap = await db.collection('predictions').get();
+      const usersSnap = await db.collection('users').get();
 
       cachedMatches = [];
       matchesSnap.forEach(doc => cachedMatches.push({ id: doc.id, ...doc.data() }));
@@ -116,6 +121,18 @@ const App = (() => {
       cachedPredictions = {};
       predictionsSnap.forEach(doc => {
         cachedPredictions[doc.data().matchId] = doc.data();
+      });
+
+      cachedUsers = {};
+      usersSnap.forEach(doc => {
+        cachedUsers[doc.id] = doc.data();
+      });
+
+      cachedAllPredictions = {};
+      allPredsSnap.forEach(doc => {
+        const p = doc.data();
+        if (!cachedAllPredictions[p.matchId]) cachedAllPredictions[p.matchId] = [];
+        cachedAllPredictions[p.matchId].push(p);
       });
     }
 
@@ -284,8 +301,46 @@ const App = (() => {
         <div class="match-kickoff">${kickoffLocal}</div>
         ${renderPredictionSection(match, prediction, isLocked, isFinished)}
         ${pointsDisplay}
+        ${isLocked ? renderAllPredictions(match) : ''}
       </div>
     `;
+  }
+
+  // Show everyone's predictions once a match is locked
+  function renderAllPredictions(match) {
+    const preds = (cachedAllPredictions && cachedAllPredictions[match.id]) || [];
+    if (preds.length === 0) return '';
+
+    // Sort: current user first, then alphabetically
+    const sorted = [...preds].sort((a, b) => {
+      if (a.userId === currentUser.uid) return -1;
+      if (b.userId === currentUser.uid) return 1;
+      const nameA = (cachedUsers[a.userId]?.displayName || '').toLowerCase();
+      const nameB = (cachedUsers[b.userId]?.displayName || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    let html = '<div class="all-predictions"><div class="all-predictions-heading">Everyone\'s predictions</div>';
+    sorted.forEach(p => {
+      const user = cachedUsers[p.userId] || {};
+      const name = escapeHtml(user.displayName || 'Player');
+      const isMe = p.userId === currentUser.uid;
+      const scorerText = p.firstScorer ? `⚡ ${escapeHtml(p.firstScorer)}` : '';
+      let ptsBadge = '';
+      if (p.scored) {
+        ptsBadge = `<span class="ap-pts pts-${p.points}">${p.points} pt${p.points !== 1 ? 's' : ''}</span>`;
+      }
+      html += `
+        <div class="ap-row ${isMe ? 'ap-row--me' : ''}">
+          <span class="ap-name">${name}${isMe ? ' <span class="ap-you">(you)</span>' : ''}</span>
+          <span class="ap-score">${p.homeScore}–${p.awayScore}</span>
+          <span class="ap-scorer">${scorerText}</span>
+          ${ptsBadge}
+        </div>
+      `;
+    });
+    html += '</div>';
+    return html;
   }
 
   function renderPredictionSection(match, prediction, isLocked, isFinished) {
