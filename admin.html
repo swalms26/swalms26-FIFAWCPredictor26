@@ -446,6 +446,24 @@
     <div id="proxy-msg" class="hidden"></div>
   </div>
 
+  <!-- Section 1b: Tournament winner bonus -->
+  <div class="admin-section">
+    <div class="section-title">🏆 Tournament winner bonus</div>
+    <p class="section-desc">Enter the World Cup winner after the Final on July 19. All players who picked correctly get 20 points added to their total.</p>
+
+    <div class="field">
+      <label>Tournament winner</label>
+      <select id="bonus-winner-select">
+        <option value="">— Select the winner —</option>
+      </select>
+    </div>
+
+    <button class="admin-btn admin-btn--primary" onclick="saveBonusWinner()">
+      Save winner &amp; award 20pts
+    </button>
+    <div id="bonus-winner-msg" class="hidden"></div>
+  </div>
+
   <!-- Section 2: Update knockout teams -->
   <div class="admin-section">
     <div class="section-title">Update knockout teams</div>
@@ -520,6 +538,7 @@
 
     populateResultMatchDropdown();
     populateMatchDropdown();
+    populateBonusWinnerDropdown();
     renderKnockoutList();
     renderUsersList();
   }
@@ -836,6 +855,50 @@
       `;
     });
     container.innerHTML = html;
+  }
+
+  // ── Bonus winner ────────────────────────────────────────────
+  function populateBonusWinnerDropdown() {
+    const sel = document.getElementById('bonus-winner-select');
+    const teams = Object.keys(WC2026_SQUADS).sort();
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function saveBonusWinner() {
+    const team = document.getElementById('bonus-winner-select').value;
+    const msgEl = document.getElementById('bonus-winner-msg');
+    if (!team) { showMsg(msgEl, 'Please select a team', 'error'); return; }
+
+    if (!confirm(`Set ${team} as the World Cup winner and award 20pts to all correct picks?`)) return;
+
+    try {
+      // Save winner to meta doc
+      await db.collection('meta').doc('bonus').set({ winner: team });
+
+      // Find all bonus predictions that match
+      const snap = await db.collection('bonusPredictions').get();
+      let count = 0;
+      for (const doc of snap.docs) {
+        const b = doc.data();
+        if (b.team === team && !b.awarded) {
+          await db.collection('users').doc(doc.id).update({
+            totalPoints: firebase.firestore.FieldValue.increment(20)
+          }).catch(() => {});
+          await doc.ref.update({ awarded: true, points: 20 });
+          count++;
+        }
+      }
+
+      showMsg(msgEl, `✓ ${team} saved as winner! ${count} player(s) awarded 20pts.`, 'success');
+    } catch(err) {
+      showMsg(msgEl, 'Error: ' + err.message, 'error');
+      console.error(err);
+    }
   }
 
   // ── Utility ─────────────────────────────────────────────────
