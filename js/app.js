@@ -71,6 +71,7 @@ const App = (() => {
         </div>
         <div class="nav-links">
           <button class="nav-btn" data-view="matches" onclick="App.showView('matches')">Matches</button>
+          <button class="nav-btn" data-view="bonus" onclick="App.showView('bonus')">🏆 Bonus</button>
           <button class="nav-btn" data-view="leaderboard" onclick="App.showView('leaderboard')">Leaderboard</button>
           <button class="nav-btn nav-btn--user" onclick="App.showView('profile')">
             ${escapeHtml(currentUser.displayName || 'Me')}
@@ -91,6 +92,7 @@ const App = (() => {
 
     if (view === 'matches') renderMatches();
     else if (view === 'leaderboard') renderLeaderboard();
+    else if (view === 'bonus') renderBonus();
     else if (view === 'profile') renderProfile();
   }
 
@@ -524,6 +526,192 @@ const App = (() => {
     setTimeout(() => el.classList.add('hidden'), 3000);
   }
 
+  // ── Bonus View ─────────────────────────────────────────────
+
+  const BONUS_LOCK_DATE = new Date('2026-06-22T03:59:59Z'); // midnight ET Sunday June 21
+  const BONUS_POINTS = 20;
+
+  async function renderBonus() {
+    const main = document.getElementById('main');
+    const now = new Date();
+    const isLocked = now >= BONUS_LOCK_DATE;
+
+    // Fetch bonus config from Firestore
+    const bonusDoc = await db.collection('meta').doc('bonus').get();
+    const bonusData = bonusDoc.exists ? bonusDoc.data() : {};
+    const winner = bonusData.winner || null; // set by admin after final
+
+    // Fetch user's bonus prediction
+    const myBonusDoc = await db.collection('bonusPredictions').doc(currentUser.uid).get();
+    const myBonus = myBonusDoc.exists ? myBonusDoc.data() : null;
+
+    // All teams list (from squads)
+    const allTeams = Object.keys(WC2026_SQUADS).sort();
+
+    let html = '<div class="bonus-view">';
+    html += '<h2 class="view-heading">🏆 Tournament Winner</h2>';
+
+    // Deadline banner
+    const lockStr = BONUS_LOCK_DATE.toLocaleDateString('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+    });
+
+    if (!isLocked) {
+      html += `
+        <div class="bonus-banner bonus-banner--open">
+          <div class="bonus-banner-pts">+${BONUS_POINTS} pts</div>
+          <div class="bonus-banner-text">
+            <strong>Pick the World Cup winner</strong>
+            <span>Locks ${lockStr}</span>
+          </div>
+        </div>
+      `;
+    } else if (winner) {
+      html += `
+        <div class="bonus-banner bonus-banner--winner">
+          <div class="bonus-banner-pts">🏆</div>
+          <div class="bonus-banner-text">
+            <strong>Winner: ${escapeHtml(winner)} ${getFlag(winner)}</strong>
+            <span>Tournament complete!</span>
+          </div>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="bonus-banner bonus-banner--locked">
+          <div class="bonus-banner-pts">🔒</div>
+          <div class="bonus-banner-text">
+            <strong>Predictions locked</strong>
+            <span>Winner will be confirmed after the Final on July 19</span>
+          </div>
+        </div>
+      `;
+    }
+
+    // My prediction card
+    html += '<div class="bonus-card">';
+    html += '<div class="bonus-card-title">Your pick</div>';
+
+    if (myBonus) {
+      const correct = winner && myBonus.team === winner;
+      const wrong = winner && myBonus.team !== winner;
+      html += `
+        <div class="bonus-pick ${correct ? 'bonus-pick--correct' : wrong ? 'bonus-pick--wrong' : ''}">
+          <span class="bonus-pick-flag">${getFlag(myBonus.team)}</span>
+          <span class="bonus-pick-team">${escapeHtml(myBonus.team)}</span>
+          ${correct ? `<span class="bonus-pick-result">✓ +${BONUS_POINTS}pts!</span>` : ''}
+          ${wrong ? `<span class="bonus-pick-result bonus-pick-result--wrong">✗</span>` : ''}
+        </div>
+      `;
+      if (!isLocked) {
+        html += `<button class="predict-btn" style="margin-top:12px;" onclick="App.changeBonus()">Change pick</button>`;
+      }
+    } else if (!isLocked) {
+      html += `
+        <div class="bonus-select-form" id="bonus-form">
+          <select id="bonus-team-select" class="scorer-dropdown">
+            <option value="">— Select a team —</option>
+            ${allTeams.map(t => `<option value="${escapeHtml(t)}">${getFlag(t)} ${escapeHtml(t)}</option>`).join('')}
+          </select>
+          <button class="predict-btn" onclick="App.saveBonus()">Save pick</button>
+          <div id="bonus-msg" class="hidden"></div>
+        </div>
+      `;
+    } else {
+      html += `<div class="prediction-empty">No pick entered before the deadline</div>`;
+    }
+
+    html += '</div>';
+
+    // Everyone's picks (once locked)
+    if (isLocked) {
+      const allBonusSnap = await db.collection('bonusPredictions').get();
+      const allUsers = cachedUsers || {};
+
+      html += '<div class="bonus-card">';
+      html += '<div class="bonus-card-title">Everyone's picks</div>';
+
+      if (allBonusSnap.empty) {
+        html += '<p class="empty-state" style="padding:20px 0;">No picks submitted.</p>';
+      } else {
+        allBonusSnap.forEach(doc => {
+          const b = doc.data();
+          const user = allUsers[doc.id] || {};
+          const isMe = doc.id === currentUser.uid;
+          const correct = winner && b.team === winner;
+          const wrong = winner && b.team !== winner;
+          html += `
+            <div class="ap-row ${isMe ? 'ap-row--me' : ''}" style="padding:10px 4px;">
+              <span class="ap-name">${escapeHtml(user.displayName || 'Player')}${isMe ? ' <span class="ap-you">(you)</span>' : ''}</span>
+              <span class="ap-score" style="font-size:14px;">${getFlag(b.team)} ${escapeHtml(b.team)}</span>
+              <span class="ap-scorer"></span>
+              ${correct ? `<span class="ap-pts pts-3" style="font-size:14px;">+${BONUS_POINTS}pts ✓</span>` : ''}
+              ${wrong ? `<span class="ap-pts pts-0">✗</span>` : ''}
+            </div>
+          `;
+        });
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    main.innerHTML = html;
+  }
+
+  async function saveBonus() {
+    const select = document.getElementById('bonus-team-select');
+    const team = select.value;
+    const msgEl = document.getElementById('bonus-msg');
+    if (!team) {
+      msgEl.textContent = 'Please select a team!';
+      msgEl.className = 'pred-msg pred-msg--error';
+      msgEl.classList.remove('hidden');
+      return;
+    }
+
+    const now = new Date();
+    if (now >= BONUS_LOCK_DATE) {
+      msgEl.textContent = 'Bonus predictions are now locked!';
+      msgEl.className = 'pred-msg pred-msg--error';
+      msgEl.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      await db.collection('bonusPredictions').doc(currentUser.uid).set({
+        team,
+        userId: currentUser.uid,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      renderBonus();
+    } catch(err) {
+      msgEl.textContent = 'Could not save. Please try again.';
+      msgEl.className = 'pred-msg pred-msg--error';
+      msgEl.classList.remove('hidden');
+      console.error(err);
+    }
+  }
+
+  function changeBonus() {
+    // Re-render with form visible
+    const main = document.getElementById('main');
+    const allTeams = Object.keys(WC2026_SQUADS).sort();
+    const form = `
+      <div class="bonus-select-form" id="bonus-form" style="margin-top:12px;">
+        <select id="bonus-team-select" class="scorer-dropdown">
+          <option value="">— Select a team —</option>
+          ${allTeams.map(t => `<option value="${escapeHtml(t)}">${getFlag(t)} ${escapeHtml(t)}</option>`).join('')}
+        </select>
+        <button class="predict-btn" onclick="App.saveBonus()">Save new pick</button>
+        <div id="bonus-msg" class="hidden"></div>
+      </div>
+    `;
+    const pickEl = main.querySelector('.bonus-pick');
+    if (pickEl) pickEl.insertAdjacentHTML('afterend', form);
+    const changeBtns = main.querySelectorAll('.predict-btn');
+    changeBtns.forEach(b => { if (b.textContent === 'Change pick') b.remove(); });
+  }
+
   // ── Leaderboard View ───────────────────────────────────────
 
   async function renderLeaderboard() {
@@ -703,5 +891,5 @@ const App = (() => {
     return flags[country] || '🏳️';
   }
 
-  return { init, showView, filterStage, setMatchView, toggleMatchCard, savePrediction, copyInviteLink, confirmSignOut };
+  return { init, showView, filterStage, setMatchView, toggleMatchCard, savePrediction, saveBonus, changeBonus, copyInviteLink, confirmSignOut };
 })();
