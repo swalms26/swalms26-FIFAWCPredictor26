@@ -96,7 +96,7 @@ const App = (() => {
 
   // ── Matches View ───────────────────────────────────────────
 
-  let matchViewMode = 'date'; // 'date' or 'group'
+  let matchViewMode = 'upcoming'; // 'upcoming', 'finished', or 'group'
   let cachedMatches = null;
   let cachedPredictions = null;
 
@@ -142,74 +142,51 @@ const App = (() => {
   function renderMatchesView(main, matches, myPredictions) {
     let html = '<div class="matches-view">';
 
-    // View toggle
+    // Split matches into upcoming and finished
+    const upcoming = matches.filter(m => !m.placeholder && !(m.result && ['FT','AET','PEN'].includes(m.result.status)));
+    const finished = matches.filter(m => !m.placeholder && m.result && ['FT','AET','PEN'].includes(m.result.status));
+    const placeholder = matches.filter(m => m.placeholder);
+
+    // Top filter tabs: Upcoming | Previous | By Group
     html += `
       <div class="view-toggle">
-        <button class="view-toggle-btn ${matchViewMode === 'date' ? 'view-toggle-btn--active' : ''}"
-          onclick="App.setMatchView('date')">By date</button>
+        <button class="view-toggle-btn ${matchViewMode === 'upcoming' ? 'view-toggle-btn--active' : ''}"
+          onclick="App.setMatchView('upcoming')">Upcoming</button>
+        <button class="view-toggle-btn ${matchViewMode === 'finished' ? 'view-toggle-btn--active' : ''}"
+          onclick="App.setMatchView('finished')">Previous</button>
         <button class="view-toggle-btn ${matchViewMode === 'group' ? 'view-toggle-btn--active' : ''}"
           onclick="App.setMatchView('group')">By group</button>
       </div>
     `;
 
-    if (matchViewMode === 'date') {
-      // Map each match to a broad stage bucket
-      function getStageBucket(match) {
-        if (match.placeholder) {
-          const s = match.stage || '';
-          if (s === 'Round of 32')   return 'Round of 32';
-          if (s === 'Round of 16')   return 'Round of 16';
-          if (s === 'Quarter-final') return 'Quarter-finals';
-          if (s === 'Semi-final')    return 'Semi-finals';
-          if (s === 'Third Place')   return 'Third Place';
-          if (s === 'Final')         return 'Final';
-          return 'Knockout Stage';
-        }
-        const stage = match.stage || '';
-        if (stage.startsWith('Group')) return 'Group Stage';
-        if (stage === 'Round of 32')   return 'Round of 32';
-        if (stage === 'Round of 16')   return 'Round of 16';
-        if (stage === 'Quarter-final') return 'Quarter-finals';
-        if (stage === 'Semi-final')    return 'Semi-finals';
-        if (stage === 'Third Place')   return 'Third Place';
-        if (stage === 'Final')         return 'Final';
-        return stage;
-      }
-
-      const bucketOrder = ['Group Stage','Round of 32','Round of 16','Quarter-finals','Semi-finals','Third Place','Final'];
-      const byBucket = {};
-      matches.forEach(m => {
-        const b = getStageBucket(m);
-        if (!byBucket[b]) byBucket[b] = [];
-        byBucket[b].push(m);
-      });
-
-      // Tabs — only buckets that have matches
-      const activeBuckets = bucketOrder.filter(b => byBucket[b]);
-      html += `<div class="stage-tabs">`;
-      activeBuckets.forEach((bucket, i) => {
-        html += `<button class="stage-tab ${i === 0 ? 'stage-tab--active' : ''}"
-          onclick="App.filterStage(this, '${escapeHtml(bucket)}')">${escapeHtml(bucket)}</button>`;
-      });
-      html += `</div>`;
-
-      // Match cards per bucket, sorted by kickoff
-      activeBuckets.forEach((bucket, i) => {
-        const bucketMatches = byBucket[bucket].sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
-        html += `<div class="stage-group ${i === 0 ? '' : 'hidden'}" data-stage="${escapeHtml(bucket)}">`;
-        html += `<h2 class="stage-heading">${escapeHtml(bucket)}</h2>`;
-        bucketMatches.forEach(match => {
+    if (matchViewMode === 'upcoming') {
+      // Upcoming: sorted by date, includes locked-but-not-finished and placeholders
+      const toShow = [...upcoming, ...placeholder].sort((a,b) => new Date(a.kickoff) - new Date(b.kickoff));
+      if (toShow.length === 0) {
+        html += '<p class="empty-state">No upcoming matches — check the Previous tab!</p>';
+      } else {
+        toShow.forEach(match => {
           if (match.placeholder) {
             html += renderPlaceholderCard(match);
           } else {
             html += renderMatchCard(match, myPredictions[match.id] || null);
           }
         });
-        html += '</div>';
-      });
+      }
+
+    } else if (matchViewMode === 'finished') {
+      // Previous: most recent first
+      const toShow = [...finished].sort((a,b) => new Date(b.kickoff) - new Date(a.kickoff));
+      if (toShow.length === 0) {
+        html += '<p class="empty-state">No completed matches yet!</p>';
+      } else {
+        toShow.forEach(match => {
+          html += renderMatchCard(match, myPredictions[match.id] || null);
+        });
+      }
 
     } else {
-      // Group by stage/group
+      // By group
       const byStage = {};
       matches.forEach(m => {
         if (!byStage[m.stage]) byStage[m.stage] = [];
@@ -240,6 +217,21 @@ const App = (() => {
 
     html += '</div>';
     main.innerHTML = html;
+  }
+
+  function toggleMatchCard(matchId) {
+    const body = document.getElementById(`body-${matchId}`);
+    const chevron = document.getElementById(`chevron-${matchId}`);
+    const card = document.getElementById(`card-${matchId}`);
+    if (body.classList.contains('hidden')) {
+      body.classList.remove('hidden');
+      chevron.textContent = '▾';
+      card.classList.remove('match-card--collapsed');
+    } else {
+      body.classList.add('hidden');
+      chevron.textContent = '▸';
+      card.classList.add('match-card--collapsed');
+    }
   }
 
   function setMatchView(mode) {
@@ -279,6 +271,52 @@ const App = (() => {
     let pointsDisplay = '';
     if (prediction && prediction.scored) {
       pointsDisplay = `<div class="prediction-points pts-${prediction.points}">${prediction.points} pt${prediction.points !== 1 ? 's' : ''}</div>`;
+    }
+
+    // Finished matches are collapsible
+    if (isFinished) {
+      const myPts = (prediction && prediction.scored) ? prediction.points : null;
+      const ptsBadge = myPts !== null
+        ? `<span class="collapse-pts pts-${myPts}">${myPts}pt${myPts !== 1 ? 's' : ''}</span>`
+        : '';
+      return `
+        <div class="match-card match-card--finished match-card--collapsed" id="card-${match.id}">
+          <div class="match-card-collapsed-row" onclick="App.toggleMatchCard('${match.id}')">
+            <div class="collapse-teams">
+              <span class="collapse-flag">${getFlag(match.home)}</span>
+              <span class="collapse-name">${escapeHtml(match.home)}</span>
+              <span class="collapse-score">${match.result.homeScore}–${match.result.awayScore}</span>
+              <span class="collapse-name">${escapeHtml(match.away)}</span>
+              <span class="collapse-flag">${getFlag(match.away)}</span>
+            </div>
+            <div class="collapse-right">
+              ${ptsBadge}
+              <span class="collapse-chevron" id="chevron-${match.id}">▸</span>
+            </div>
+          </div>
+          <div class="match-card-body hidden" id="body-${match.id}">
+            <div class="match-card-header">
+              <span class="match-venue">${escapeHtml(match.venue)}</span>
+              ${statusBadge}
+            </div>
+            <div class="match-teams">
+              <div class="team team--home">
+                <span class="team-flag">${getFlag(match.home)}</span>
+                <span class="team-name">${escapeHtml(match.home)}</span>
+              </div>
+              ${scoreDisplay}
+              <div class="team team--away">
+                <span class="team-name">${escapeHtml(match.away)}</span>
+                <span class="team-flag">${getFlag(match.away)}</span>
+              </div>
+            </div>
+            <div class="match-kickoff">${kickoffLocal}</div>
+            ${renderPredictionSection(match, prediction, isLocked, isFinished)}
+            ${pointsDisplay}
+            ${renderAllPredictions(match)}
+          </div>
+        </div>
+      `;
     }
 
     return `
@@ -665,5 +703,5 @@ const App = (() => {
     return flags[country] || '🏳️';
   }
 
-  return { init, showView, filterStage, setMatchView, savePrediction, copyInviteLink, confirmSignOut };
+  return { init, showView, filterStage, setMatchView, toggleMatchCard, savePrediction, copyInviteLink, confirmSignOut };
 })();
