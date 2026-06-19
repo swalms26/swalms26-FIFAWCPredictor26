@@ -629,7 +629,7 @@ const App = (() => {
       const allUsers = cachedUsers || {};
 
       html += '<div class="bonus-card">';
-      html += '<div class="bonus-card-title">Everyone's picks</div>';
+      html += '<div class="bonus-card-title">Everyone\'s picks</div>';
 
       if (allBonusSnap.empty) {
         html += '<p class="empty-state" style="padding:20px 0;">No picks submitted.</p>';
