@@ -446,6 +446,14 @@
     <div id="proxy-msg" class="hidden"></div>
   </div>
 
+  <!-- Section 0b: Recalculate all points -->
+  <div class="admin-section">
+    <div class="section-title">🔄 Recalculate all points</div>
+    <p class="section-desc">Use this if the leaderboard totals look wrong. It wipes all user point totals and rebuilds them from scratch based on scored predictions and bonus picks.</p>
+    <button class="admin-btn admin-btn--danger" onclick="recalculateAllPoints()">Recalculate everything from scratch</button>
+    <div id="recalc-msg" class="hidden"></div>
+  </div>
+
   <!-- Section 1b: Tournament winner bonus -->
   <div class="admin-section">
     <div class="section-title">🏆 Tournament winner bonus</div>
@@ -855,6 +863,67 @@
       `;
     });
     container.innerHTML = html;
+  }
+
+  // ── Recalculate all points ──────────────────────────────────
+  async function recalculateAllPoints() {
+    const msgEl = document.getElementById('recalc-msg');
+    if (!confirm('This will reset ALL user point totals and rebuild from scratch. Are you sure?')) return;
+
+    msgEl.textContent = 'Recalculating...';
+    msgEl.className = 'msg msg--success';
+    msgEl.classList.remove('hidden');
+
+    try {
+      // 1. Reset all user totals to 0
+      const usersSnap = await db.collection('users').get();
+      const resetBatch = db.batch();
+      usersSnap.forEach(doc => {
+        resetBatch.update(doc.ref, { totalPoints: 0 });
+      });
+      await resetBatch.commit();
+
+      // 2. Sum up all scored predictions per user
+      const predsSnap = await db.collection('predictions').where('scored', '==', true).get();
+      const userPoints = {};
+      predsSnap.forEach(doc => {
+        const p = doc.data();
+        if (!userPoints[p.userId]) userPoints[p.userId] = 0;
+        userPoints[p.userId] += (p.points || 0);
+      });
+
+      // 3. Add bonus predictions if winner is set
+      const bonusDoc = await db.collection('meta').doc('bonus').get();
+      if (bonusDoc.exists && bonusDoc.data().winner) {
+        const winner = bonusDoc.data().winner;
+        const bonusSnap = await db.collection('bonusPredictions').where('awarded', '==', true).get();
+        bonusSnap.forEach(doc => {
+          const b = doc.data();
+          if (b.team === winner) {
+            if (!userPoints[doc.id]) userPoints[doc.id] = 0;
+            userPoints[doc.id] += 20;
+          }
+        });
+      }
+
+      // 4. Write corrected totals
+      for (const [userId, pts] of Object.entries(userPoints)) {
+        try {
+          await db.collection('users').doc(userId).update({ totalPoints: pts });
+        } catch(e) {
+          console.warn('Could not update user', userId, e);
+        }
+      }
+
+      const userCount = Object.keys(userPoints).length;
+      msgEl.textContent = `✓ Done! Recalculated points for ${userCount} player(s). Refresh the app to see updated leaderboard.`;
+      await loadAdminData();
+
+    } catch(err) {
+      msgEl.textContent = 'Error: ' + err.message;
+      msgEl.className = 'msg msg--error';
+      console.error(err);
+    }
   }
 
   // ── Bonus winner ────────────────────────────────────────────
