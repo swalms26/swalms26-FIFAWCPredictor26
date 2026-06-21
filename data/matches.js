@@ -38,7 +38,7 @@ const WC2026_MATCHES = [
   { id: "gE1", group: "E", home: "Germany", away: "Curacao", venue: "Houston Stadium, Houston", kickoff: "2026-06-14T17:00:00Z", stage: "Group E" },
   { id: "gE2", group: "E", home: "Ivory Coast", away: "Ecuador", venue: "Philadelphia Stadium, Philadelphia", kickoff: "2026-06-14T23:00:00Z", stage: "Group E" },
   { id: "gE3", group: "E", home: "Germany", away: "Ivory Coast", venue: "Toronto Stadium, Toronto", kickoff: "2026-06-20T20:00:00Z", stage: "Group E" },
-  { id: "gE4", group: "E", home: "Ecuador", away: "Curacao", venue: "Kansas City Stadium, Kansas City", kickoff: "2026-06-21T03:00:00Z", stage: "Group E" },
+  { id: "gE4", group: "E", home: "Ecuador", away: "Curacao", venue: "Kansas City Stadium, Kansas City", kickoff: "2026-06-21T00:00:00Z", stage: "Group E" },
   { id: "gE5", group: "E", home: "Ecuador", away: "Germany", venue: "New York New Jersey Stadium", kickoff: "2026-06-25T20:00:00Z", stage: "Group E" },
   { id: "gE6", group: "E", home: "Curacao", away: "Ivory Coast", venue: "Philadelphia Stadium, Philadelphia", kickoff: "2026-06-25T20:00:00Z", stage: "Group E" },
 
@@ -55,8 +55,8 @@ const WC2026_MATCHES = [
   { id: "gG2", group: "G", home: "Iran", away: "New Zealand", venue: "Los Angeles Stadium", kickoff: "2026-06-16T01:00:00Z", stage: "Group G" },
   { id: "gG3", group: "G", home: "Belgium", away: "Iran", venue: "Los Angeles Stadium", kickoff: "2026-06-21T19:00:00Z", stage: "Group G" },
   { id: "gG4", group: "G", home: "New Zealand", away: "Egypt", venue: "BC Place, Vancouver", kickoff: "2026-06-22T01:00:00Z", stage: "Group G" },
-  { id: "gG5", group: "G", home: "Egypt", away: "Iran", venue: "Seattle Stadium, Seattle", kickoff: "2026-06-26T03:00:00Z", stage: "Group G" },
-  { id: "gG6", group: "G", home: "New Zealand", away: "Belgium", venue: "BC Place, Vancouver", kickoff: "2026-06-26T03:00:00Z", stage: "Group G" },
+  { id: "gG5", group: "G", home: "Egypt", away: "Iran", venue: "Seattle Stadium, Seattle", kickoff: "2026-06-26T19:00:00Z", stage: "Group G" },
+  { id: "gG6", group: "G", home: "New Zealand", away: "Belgium", venue: "BC Place, Vancouver", kickoff: "2026-06-26T19:00:00Z", stage: "Group G" },
 
   // ===== GROUP H: Spain, Cape Verde, Saudi Arabia, Uruguay =====
   { id: "gH1", group: "H", home: "Spain", away: "Cape Verde", venue: "Atlanta Stadium, Atlanta", kickoff: "2026-06-15T16:00:00Z", stage: "Group H" },
@@ -71,8 +71,8 @@ const WC2026_MATCHES = [
   { id: "gI2", group: "I", home: "Iraq", away: "Norway", venue: "Boston Stadium, Boston", kickoff: "2026-06-16T22:00:00Z", stage: "Group I" },
   { id: "gI3", group: "I", home: "France", away: "Iraq", venue: "Philadelphia Stadium, Philadelphia", kickoff: "2026-06-22T21:00:00Z", stage: "Group I" },
   { id: "gI4", group: "I", home: "Norway", away: "Senegal", venue: "New York New Jersey Stadium", kickoff: "2026-06-23T00:00:00Z", stage: "Group I" },
-  { id: "gI5", group: "I", home: "Norway", away: "France", venue: "Boston Stadium, Boston", kickoff: "2026-06-26T19:00:00Z", stage: "Group I" },
-  { id: "gI6", group: "I", home: "Senegal", away: "Iraq", venue: "Toronto Stadium, Toronto", kickoff: "2026-06-26T19:00:00Z", stage: "Group I" },
+  { id: "gI5", group: "I", home: "Norway", away: "France", venue: "Boston Stadium, Boston", kickoff: "2026-06-26T23:00:00Z", stage: "Group I" },
+  { id: "gI6", group: "I", home: "Senegal", away: "Iraq", venue: "Toronto Stadium, Toronto", kickoff: "2026-06-26T23:00:00Z", stage: "Group I" },
 
   // ===== GROUP J: Argentina, Algeria, Austria, Jordan =====
   { id: "gJ1", group: "J", home: "Argentina", away: "Algeria", venue: "Kansas City Stadium, Kansas City", kickoff: "2026-06-17T01:00:00Z", stage: "Group J" },
