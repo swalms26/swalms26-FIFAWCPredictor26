@@ -366,6 +366,7 @@ const App = (() => {
       const name = escapeHtml(user.displayName || 'Player');
       const isMe = p.userId === currentUser.uid;
       const scorerText = p.firstScorer ? `⚡ ${escapeHtml(p.firstScorer)}` : '';
+      const qualifierText = p.qualifier ? `✅ ${escapeHtml(p.qualifier)}` : '';
       let ptsBadge = '';
       if (p.scored) {
         ptsBadge = `<span class="ap-pts pts-${p.points}">${p.points} pt${p.points !== 1 ? 's' : ''}</span>`;
@@ -374,13 +375,21 @@ const App = (() => {
         <div class="ap-row ${isMe ? 'ap-row--me' : ''}">
           <span class="ap-name">${name}${isMe ? ' <span class="ap-you">(you)</span>' : ''}</span>
           <span class="ap-score">${p.homeScore}–${p.awayScore}</span>
-          <span class="ap-scorer">${scorerText}</span>
+          <span class="ap-scorer">${scorerText}${qualifierText ? ` ${qualifierText}` : ''}</span>
           ${ptsBadge}
         </div>
       `;
     });
     html += '</div>';
     return html;
+  }
+
+  function isKnockoutMatch(match) {
+    const s = match.stage || '';
+    if (s.startsWith('Group')) return false;
+    // Knockout stages; only real (non-placeholder) matches with two named teams
+    // can take a qualifier pick.
+    return !match.placeholder;
   }
 
   function renderPredictionSection(match, prediction, isLocked, isFinished) {
@@ -392,10 +401,14 @@ const App = (() => {
       const scorerLine = prediction.firstScorer
         ? `<span class="pred-scorer">⚡ ${escapeHtml(prediction.firstScorer)}</span>`
         : '';
+      const qualifierLine = prediction.qualifier
+        ? `<span class="pred-qualifier">✅ ${escapeHtml(prediction.qualifier)} to qualify</span>`
+        : '';
       return `
         <div class="prediction-submitted">
           <span class="pred-score">${prediction.homeScore} – ${prediction.awayScore}</span>
           ${scorerLine}
+          ${qualifierLine}
           <span class="pred-label">Your prediction</span>
         </div>
       `;
@@ -412,15 +425,40 @@ const App = (() => {
     const existingHome = prediction ? prediction.homeScore : '';
     const existingAway = prediction ? prediction.awayScore : '';
     const existingScorer = prediction ? prediction.firstScorer : '';
+    const existingQualifier = prediction ? prediction.qualifier : '';
+    const knockout = isKnockoutMatch(match);
+
+    // Whether the current/existing predicted score is a draw. The qualifier
+    // dropdown is only relevant (and only shown) when the score is level.
+    const startsAsDraw = existingHome !== '' && existingAway !== ''
+      && parseInt(existingHome) === parseInt(existingAway);
+
+    const qualifierBlock = knockout ? `
+        <div class="qualifier-select ${startsAsDraw ? '' : 'hidden'}" id="qualifier-block-${match.id}">
+          <label class="scorer-label">Team to qualify <span class="pts-tag">+1pt</span></label>
+          <select id="qualifier-${match.id}" class="scorer-dropdown">
+            <option value="">— Select team to go through —</option>
+            <option value="${escapeHtml(match.home)}" ${existingQualifier === match.home ? 'selected' : ''}>${escapeHtml(match.home)}</option>
+            <option value="${escapeHtml(match.away)}" ${existingQualifier === match.away ? 'selected' : ''}>${escapeHtml(match.away)}</option>
+          </select>
+          <span class="qualifier-hint">It's a draw after 90 mins — pick who goes through in extra time or penalties.</span>
+        </div>
+    ` : '';
+
+    // On a knockout match, react to score changes: hide the dropdown and derive
+    // the qualifier from the winner on a non-draw; show it on a draw.
+    const autoSetAttr = knockout
+      ? `oninput="App.autoSetQualifier('${match.id}', '${escapeHtml(match.home)}', '${escapeHtml(match.away)}')"`
+      : '';
 
     return `
       <div class="prediction-form" data-match-id="${match.id}">
         <div class="score-inputs">
           <label class="score-label">${escapeHtml(match.home)}</label>
-          <input type="number" class="score-input" min="0" max="20" 
+          <input type="number" class="score-input" min="0" max="20" ${autoSetAttr}
             id="home-${match.id}" value="${existingHome}" placeholder="0" />
           <span class="score-dash">–</span>
-          <input type="number" class="score-input" min="0" max="20"
+          <input type="number" class="score-input" min="0" max="20" ${autoSetAttr}
             id="away-${match.id}" value="${existingAway}" placeholder="0" />
           <label class="score-label">${escapeHtml(match.away)}</label>
         </div>
@@ -431,6 +469,7 @@ const App = (() => {
             ${allPlayers.map(p => `<option value="${escapeHtml(p)}" ${existingScorer === p ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('')}
           </select>
         </div>
+        ${qualifierBlock}
         <button class="predict-btn" onclick="App.savePrediction('${match.id}')">
           ${prediction ? 'Update prediction' : 'Save prediction'}
         </button>
@@ -470,10 +509,57 @@ const App = (() => {
 
   // ── Save Prediction ────────────────────────────────────────
 
+  // React to score input on a knockout match. On a non-draw the qualifier is
+  // fixed to the winning team, so the dropdown is hidden. On a draw the dropdown
+  // is shown so the user can pick who advances on extra time / penalties.
+  function autoSetQualifier(matchId, home, away) {
+    const homeInput = document.getElementById(`home-${matchId}`);
+    const awayInput = document.getElementById(`away-${matchId}`);
+    const qualifierBlock = document.getElementById(`qualifier-block-${matchId}`);
+    const qualifierSelect = document.getElementById(`qualifier-${matchId}`);
+    if (!homeInput || !awayInput || !qualifierBlock || !qualifierSelect) return;
+
+    const h = homeInput.value.trim();
+    const a = awayInput.value.trim();
+
+    // Incomplete score: hide the dropdown, nothing to derive yet.
+    if (h === '' || a === '') {
+      qualifierBlock.classList.add('hidden');
+      return;
+    }
+
+    const hn = parseInt(h);
+    const an = parseInt(a);
+    if (Number.isNaN(hn) || Number.isNaN(an)) {
+      qualifierBlock.classList.add('hidden');
+      return;
+    }
+
+    if (hn === an) {
+      // Draw: show the dropdown for an explicit pick.
+      qualifierBlock.classList.remove('hidden');
+    } else {
+      // Non-draw: qualifier is the winner; hide the dropdown.
+      qualifierBlock.classList.add('hidden');
+    }
+  }
+
+  // Returns the qualifier implied by a score, or null if it's a draw (in which
+  // case the dropdown selection is the source of truth).
+  function qualifierFromScore(homeScore, awayScore, home, away) {
+    const hn = parseInt(homeScore);
+    const an = parseInt(awayScore);
+    if (Number.isNaN(hn) || Number.isNaN(an)) return null;
+    if (hn > an) return home;
+    if (an > hn) return away;
+    return null; // draw
+  }
+
   async function savePrediction(matchId) {
     const homeInput = document.getElementById(`home-${matchId}`);
     const awayInput = document.getElementById(`away-${matchId}`);
     const scorerSelect = document.getElementById(`scorer-${matchId}`);
+    const qualifierSelect = document.getElementById(`qualifier-${matchId}`);
     const msgEl = document.getElementById(`pred-msg-${matchId}`);
 
     const homeScore = homeInput.value.trim();
@@ -483,6 +569,26 @@ const App = (() => {
     if (homeScore === '' || awayScore === '') {
       showPredMsg(msgEl, 'Please enter a score for both teams', 'error');
       return;
+    }
+
+    // Resolve the qualifier for knockout matches. The score is the source of
+    // truth: a winner qualifies automatically; only a draw uses the dropdown.
+    let qualifier = null;
+    if (qualifierSelect) {
+      const match = (cachedMatches || []).find(m => m.id === matchId);
+      const home = match ? match.home : '';
+      const away = match ? match.away : '';
+      const fromScore = qualifierFromScore(homeScore, awayScore, home, away);
+      if (fromScore) {
+        qualifier = fromScore;
+      } else {
+        // Draw: must pick explicitly.
+        qualifier = qualifierSelect.value || null;
+        if (!qualifier) {
+          showPredMsg(msgEl, 'Pick who qualifies', 'error');
+          return;
+        }
+      }
     }
 
     // Double check lock
@@ -505,6 +611,7 @@ const App = (() => {
         homeScore: parseInt(homeScore),
         awayScore: parseInt(awayScore),
         firstScorer: firstScorer || null,
+        qualifier: qualifier || null,
         points: null,
         scored: false,
         submittedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -732,6 +839,8 @@ const App = (() => {
       if (p.breakdown && p.breakdown.score)  breakdown[p.userId].correctScores++;
       if (p.breakdown && p.breakdown.result) breakdown[p.userId].correctResults++;
       if (p.breakdown && p.breakdown.scorer) breakdown[p.userId].correctScorers++;
+      // Correct knockout qualifier (1pt) counts alongside correct results
+      if (p.breakdown && p.breakdown.qualifier) breakdown[p.userId].correctResults++;
     });
 
     let html = '<div class="leaderboard-view">';
@@ -747,7 +856,7 @@ const App = (() => {
           <span class="lb-name">Player</span>
           <span class="lb-stat lb-stat--header" title="Predictions played">P</span>
           <span class="lb-stat lb-stat--header lb-stat--score" title="Correct scores (3pts)">CS</span>
-          <span class="lb-stat lb-stat--header lb-stat--result" title="Correct results (1pt)">CR</span>
+          <span class="lb-stat lb-stat--header lb-stat--result" title="Correct result after 90 mins / team to qualify (1pt)">CR</span>
           <span class="lb-stat lb-stat--header lb-stat--scorer" title="Correct first goalscorer (2pts)">FG</span>
           <span class="lb-pts">Pts</span>
         </div>
@@ -779,7 +888,7 @@ const App = (() => {
         <div class="lb-key-grid">
           <span class="lb-key-item"><strong>P</strong> Predictions made</span>
           <span class="lb-key-item"><strong>CS</strong> Correct score <em>(3pts)</em></span>
-          <span class="lb-key-item"><strong>CR</strong> Correct result <em>(1pt)</em></span>
+          <span class="lb-key-item"><strong>CR</strong> Correct result / qualifier <em>(1pt)</em></span>
           <span class="lb-key-item"><strong>FG</strong> First goalscorer <em>(2pts)</em></span>
         </div>
       `;
@@ -891,5 +1000,5 @@ const App = (() => {
     return flags[country] || '🏳️';
   }
 
-  return { init, showView, filterStage, setMatchView, toggleMatchCard, savePrediction, saveBonus, changeBonus, copyInviteLink, confirmSignOut };
+  return { init, showView, filterStage, setMatchView, toggleMatchCard, savePrediction, autoSetQualifier, saveBonus, changeBonus, copyInviteLink, confirmSignOut };
 })();
