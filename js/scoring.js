@@ -15,14 +15,14 @@ const Scoring = (() => {
     const realAway = parseInt(result.awayScore);
 
     let points = 0;
-    let breakdown = { score: 0, result: 0, scorer: 0 };
+    let breakdown = { score: 0, result: 0, scorer: 0, qualifier: 0 };
 
-    // Exact score: 3 points
+    // Exact score (after 90 mins): 3 points
     if (predHome === realHome && predAway === realAway) {
       points += 3;
       breakdown.score = 3;
     }
-    // Correct result (win/draw/loss): 1 point
+    // Correct result after 90 mins (win/draw/loss): 1 point
     else {
       const predResult = getResult(predHome, predAway);
       const realResult = getResult(realHome, realAway);
@@ -37,6 +37,15 @@ const Scoring = (() => {
       if (normalisePlayerName(prediction.firstScorer) === normalisePlayerName(result.firstScorer)) {
         points += 2;
         breakdown.scorer = 2;
+      }
+    }
+
+    // Correct team to qualify (knockout only): 1 point
+    // Only scored when the result records a qualifier (i.e. a knockout match).
+    if (result.qualifier && prediction.qualifier) {
+      if (prediction.qualifier === result.qualifier) {
+        points += 1;
+        breakdown.qualifier = 1;
       }
     }
 
@@ -94,6 +103,7 @@ const Scoring = (() => {
         homeScore: result.homeScore,
         awayScore: result.awayScore,
         firstScorer: result.firstScorer || null,
+        qualifier: result.qualifier || null,
         status: 'FT'
       },
       processed: true,
