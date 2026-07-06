@@ -472,6 +472,29 @@
     <div id="bonus-winner-msg" class="hidden"></div>
   </div>
 
+  <!-- Section 1c: Set a user's tournament winner pick (proxy) -->
+  <div class="admin-section">
+    <div class="section-title">🏆 Set a user's winner pick</div>
+    <p class="section-desc">Use this if a player didn't get round to choosing their tournament winner. Enter their email and pick a team on their behalf. This sets their bonus prediction the same as if they'd chosen it themselves.</p>
+
+    <div class="field">
+      <label>User email</label>
+      <input type="email" id="proxy-bonus-email" placeholder="user@example.com" />
+    </div>
+
+    <div class="field">
+      <label>Tournament winner pick</label>
+      <select id="proxy-bonus-team">
+        <option value="">— Select a team —</option>
+      </select>
+    </div>
+
+    <button class="admin-btn admin-btn--primary" onclick="submitProxyBonus()" id="proxy-bonus-btn">
+      Save winner pick
+    </button>
+    <div id="proxy-bonus-msg" class="hidden"></div>
+  </div>
+
   <!-- Section 2: Update knockout teams -->
   <div class="admin-section">
     <div class="section-title">Update knockout teams</div>
@@ -547,6 +570,7 @@
     populateResultMatchDropdown();
     populateMatchDropdown();
     populateBonusWinnerDropdown();
+    populateProxyBonusDropdown();
     renderKnockoutList();
     renderUsersList();
   }
@@ -967,6 +991,76 @@
     } catch(err) {
       showMsg(msgEl, 'Error: ' + err.message, 'error');
       console.error(err);
+    }
+  }
+
+  // ── Proxy bonus (set a user's tournament winner pick) ───────
+  function populateProxyBonusDropdown() {
+    const sel = document.getElementById('proxy-bonus-team');
+    const teams = Object.keys(WC2026_SQUADS).sort();
+    teams.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function submitProxyBonus() {
+    const email = document.getElementById('proxy-bonus-email').value.trim().toLowerCase();
+    const team = document.getElementById('proxy-bonus-team').value;
+    const msgEl = document.getElementById('proxy-bonus-msg');
+    const btn = document.getElementById('proxy-bonus-btn');
+
+    if (!email || !team) {
+      showMsg(msgEl, 'Please enter an email and pick a team', 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+
+    try {
+      // Find user by email in Firestore
+      const usersSnap = await db.collection('users').where('email', '==', email).get();
+      if (usersSnap.empty) {
+        showMsg(msgEl, `No user found with email: ${email}`, 'error');
+        return;
+      }
+
+      const userDoc = usersSnap.docs[0];
+      const userId = userDoc.id;
+
+      // Check for an existing pick so we don't silently overwrite one that's
+      // already been awarded points after the final.
+      const existing = await db.collection('bonusPredictions').doc(userId).get();
+      if (existing.exists) {
+        const b = existing.data();
+        if (b.awarded) {
+          showMsg(msgEl, `${email} already has an awarded pick (${b.team}). Not overwriting.`, 'error');
+          return;
+        }
+        if (b.team && !confirm(`${email} already picked ${b.team}. Replace with ${team}?`)) {
+          return;
+        }
+      }
+
+      await db.collection('bonusPredictions').doc(userId).set({
+        team,
+        userId,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        addedByAdmin: true
+      });
+
+      showMsg(msgEl, `✓ Winner pick saved for ${email}: ${team}`, 'success');
+      document.getElementById('proxy-bonus-email').value = '';
+      document.getElementById('proxy-bonus-team').value = '';
+    } catch (err) {
+      showMsg(msgEl, 'Error saving pick: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save winner pick';
     }
   }
 
