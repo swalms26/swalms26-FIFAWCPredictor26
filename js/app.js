@@ -636,7 +636,7 @@ const App = (() => {
   // ── Bonus View ─────────────────────────────────────────────
 
   const BONUS_LOCK_DATE = new Date('2026-06-22T03:59:59Z'); // midnight ET Sunday June 21
-  const BONUS_POINTS = 20;
+  const BONUS_POINTS = 40;
 
   async function renderBonus() {
     const main = document.getElementById('main');
