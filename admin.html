@@ -457,7 +457,7 @@
   <!-- Section 1b: Tournament winner bonus -->
   <div class="admin-section">
     <div class="section-title">🏆 Tournament winner bonus</div>
-    <p class="section-desc">Enter the World Cup winner after the Final on July 19. All players who picked correctly get 20 points added to their total.</p>
+    <p class="section-desc">Enter the World Cup winner after the Final on July 19. All players who picked correctly get 40 points added to their total.</p>
 
     <div class="field">
       <label>Tournament winner</label>
@@ -467,7 +467,7 @@
     </div>
 
     <button class="admin-btn admin-btn--primary" onclick="saveBonusWinner()">
-      Save winner &amp; award 20pts
+      Save winner &amp; award 40pts
     </button>
     <div id="bonus-winner-msg" class="hidden"></div>
   </div>
@@ -925,7 +925,7 @@
           const b = doc.data();
           if (b.team === winner) {
             if (!userPoints[doc.id]) userPoints[doc.id] = 0;
-            userPoints[doc.id] += 20;
+            userPoints[doc.id] += 40;
           }
         });
       }
@@ -967,7 +967,7 @@
     const msgEl = document.getElementById('bonus-winner-msg');
     if (!team) { showMsg(msgEl, 'Please select a team', 'error'); return; }
 
-    if (!confirm(`Set ${team} as the World Cup winner and award 20pts to all correct picks?`)) return;
+    if (!confirm(`Set ${team} as the World Cup winner and award 40pts to all correct picks?`)) return;
 
     try {
       // Save winner to meta doc
@@ -980,14 +980,14 @@
         const b = doc.data();
         if (b.team === team && !b.awarded) {
           await db.collection('users').doc(doc.id).update({
-            totalPoints: firebase.firestore.FieldValue.increment(20)
+            totalPoints: firebase.firestore.FieldValue.increment(40)
           }).catch(() => {});
-          await doc.ref.update({ awarded: true, points: 20 });
+          await doc.ref.update({ awarded: true, points: 40 });
           count++;
         }
       }
 
-      showMsg(msgEl, `✓ ${team} saved as winner! ${count} player(s) awarded 20pts.`, 'success');
+      showMsg(msgEl, `✓ ${team} saved as winner! ${count} player(s) awarded 40pts.`, 'success');
     } catch(err) {
       showMsg(msgEl, 'Error: ' + err.message, 'error');
       console.error(err);
